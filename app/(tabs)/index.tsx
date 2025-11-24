@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -26,6 +27,7 @@ interface Location {
 type ViewMode = 'list' | 'map';
 
 export default function ExploreScreen() {
+  const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,9 +62,21 @@ export default function ExploreScreen() {
     setViewMode(prev => prev === 'list' ? 'map' : 'list');
   };
 
+  const handleLocationPress = (location: Location) => {
+    router.push({
+      pathname: '/details' as any,
+      params: {
+        location: JSON.stringify(location),
+      },
+    });
+  };
+
   const renderLocationCard = ({ item }: { item: Location }) => {
     return (
-      <View style={styles.card}>
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => handleLocationPress(item)}
+        activeOpacity={0.7}>
         <Image
           source={{ uri: item.image_url }}
           style={styles.cardImage}
@@ -78,7 +92,7 @@ export default function ExploreScreen() {
             </Text>
           )}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -121,6 +135,7 @@ export default function ExploreScreen() {
             }}
             title={location.name}
             description={`Rating: ${location.rating.toFixed(1)} ⭐`}
+            onPress={() => handleLocationPress(location)}
           />
         ))}
       </MapView>
