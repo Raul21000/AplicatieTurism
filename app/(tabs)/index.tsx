@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,11 +13,13 @@ import MapView, { Marker } from 'react-native-maps';
 
 interface Location {
   id: string;
-  title: string;
-  image: string;
+  name: string;
+  image_url: string;
   rating: number;
-  latitude: number;
-  longitude: number;
+  coordinates: {
+    lat: number;
+    long: number;
+  };
   description?: string;
 }
 
@@ -60,8 +63,14 @@ export default function ExploreScreen() {
   const renderLocationCard = ({ item }: { item: Location }) => {
     return (
       <View style={styles.card}>
+        <Image
+          source={{ uri: item.image_url }}
+          style={styles.cardImage}
+          contentFit="cover"
+          transition={200}
+        />
         <View style={styles.cardContent}>
-          <Text style={styles.cardTitle}>{item.title}</Text>
+          <Text style={styles.cardTitle}>{item.name}</Text>
           <Text style={styles.ratingText}>⭐ {item.rating.toFixed(1)}</Text>
           {item.description && (
             <Text style={styles.cardDescription} numberOfLines={2}>
@@ -82,8 +91,9 @@ export default function ExploreScreen() {
       );
     }
 
-    const latitudes = locations.map(loc => loc.latitude);
-    const longitudes = locations.map(loc => loc.longitude);
+    // Calculate initial region from locations using coordinates.lat and coordinates.long
+    const latitudes = locations.map(loc => loc.coordinates.lat);
+    const longitudes = locations.map(loc => loc.coordinates.long);
     const minLat = Math.min(...latitudes);
     const maxLat = Math.max(...latitudes);
     const minLng = Math.min(...longitudes);
@@ -106,10 +116,10 @@ export default function ExploreScreen() {
           <Marker
             key={location.id}
             coordinate={{
-              latitude: location.latitude,
-              longitude: location.longitude,
+              latitude: location.coordinates.lat,
+              longitude: location.coordinates.long,
             }}
-            title={location.title}
+            title={location.name}
             description={`Rating: ${location.rating.toFixed(1)} ⭐`}
           />
         ))}
@@ -231,8 +241,8 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 12,
     marginBottom: 15,
-    backgroundColor: '#f5f5f5',
-    padding: 15,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -242,12 +252,18 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  cardImage: {
+    width: '100%',
+    height: 200,
+    backgroundColor: '#f0f0f0',
+  },
   cardContent: {
-    flex: 1,
+    padding: 15,
   },
   cardTitle: {
     fontSize: 18,
-    fontWeight: '600',
+    fontWeight: 'bold',
+    color: '#000',
     marginBottom: 8,
   },
   ratingText: {
