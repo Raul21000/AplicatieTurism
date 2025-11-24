@@ -46,6 +46,7 @@ export default function SignUpScreen() {
         setLoading(false);
       } else if (session) {
         // User is logged in immediately after signup
+        console.log('Signup successful, session stored:', session);
         Alert.alert('Succes', 'Contul a fost creat cu succes!');
         router.replace('/(tabs)' as any);
       }

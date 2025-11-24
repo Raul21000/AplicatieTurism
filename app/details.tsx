@@ -1,7 +1,9 @@
 import { generateVibeDescription } from '@/lib/ai-service';
+import { getSession } from '@/lib/auth-helpers';
+import { isLocationSaved, removeSavedLocation, saveLocation } from '@/lib/database';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -19,6 +21,9 @@ export default function DetailsScreen() {
   const router = useRouter();
   const [description, setDescription] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [checkingSaved, setCheckingSaved] = useState(true);
 
   // Parse location data from params
   const location = params.location ? JSON.parse(params.location as string) : null;
@@ -26,6 +31,32 @@ export default function DetailsScreen() {
   // Initialize description with original
   const originalDescription = location?.description || '';
   const displayDescription = description || originalDescription;
+
+  useEffect(() => {
+    checkIfSaved();
+  }, [location]);
+
+  const checkIfSaved = async () => {
+    if (!location) {
+      setCheckingSaved(false);
+      return;
+    }
+
+    try {
+      const session = await getSession();
+      if (!session) {
+        setCheckingSaved(false);
+        return;
+      }
+
+      const saved = await isLocationSaved(session.account.accid, location.id);
+      setIsSaved(saved);
+    } catch (error) {
+      console.error('Error checking if location is saved:', error);
+    } finally {
+      setCheckingSaved(false);
+    }
+  };
 
   if (!location) {
     return (
@@ -69,6 +100,53 @@ export default function DetailsScreen() {
     }
   };
 
+  const handleSaveLocation = async () => {
+    if (!location) return;
+
+    try {
+      setIsSaving(true);
+      const session = await getSession();
+      
+      if (!session) {
+        Alert.alert('Eroare', 'Trebuie să fii autentificat pentru a salva locații');
+        return;
+      }
+
+      if (isSaved) {
+        // Remove saved location
+        const result = await removeSavedLocation(session.account.accid, location.id);
+        if (result.success) {
+          setIsSaved(false);
+          Alert.alert('Succes', 'Locația a fost ștearsă din lista ta');
+        } else {
+          Alert.alert('Eroare', result.error || 'Nu s-a putut șterge locația');
+        }
+      } else {
+        // Save location
+        const result = await saveLocation(
+          session.account.accid,
+          location.id,
+          location.name,
+          location.image_url,
+          location.rating,
+          location.description
+        );
+
+        if (result.success) {
+          setIsSaved(true);
+          Alert.alert('Succes', 'Locația a fost salvată!');
+        } else {
+          Alert.alert('Eroare', result.error || 'Nu s-a putut salva locația');
+        }
+      }
+    } catch (error: any) {
+      console.error('Error saving/removing location:', error);
+      Alert.alert('Eroare', 'A apărut o eroare. Te rog încearcă din nou.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -104,6 +182,26 @@ export default function DetailsScreen() {
           style={styles.whatsappButton}
           onPress={handleWhatsAppReservation}>
           <Text style={styles.whatsappButtonText}>Rezervă pe WhatsApp</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.saveButton, isSaved && styles.saveButtonActive, isSaving && styles.buttonDisabled]}
+          onPress={handleSaveLocation}
+          disabled={isSaving || checkingSaved}>
+          {isSaving ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator color="#fff" size="small" />
+              <Text style={styles.saveButtonText}>Se procesează...</Text>
+            </View>
+          ) : checkingSaved ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator color="#fff" size="small" />
+            </View>
+          ) : (
+            <Text style={styles.saveButtonText}>
+              {isSaved ? '✓ Locație Salvată' : '💾 Salvează Locația'}
+            </Text>
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -221,6 +319,32 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   vibeButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  saveButton: {
+    backgroundColor: '#3a3a3a',
+    paddingVertical: 18,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  saveButtonActive: {
+    backgroundColor: '#34C759',
+    shadowColor: '#34C759',
+  },
+  saveButtonText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
