@@ -1,7 +1,8 @@
 import { generateChatbotResponse } from '@/lib/chatbot-service';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -31,13 +32,41 @@ export default function ChatbotScreen() {
   ]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const keyboardShowListener = useRef<any>(null);
+  const keyboardHideListener = useRef<any>(null);
+
+  useEffect(() => {
+    // Scroll to bottom when keyboard appears
+    keyboardShowListener.current = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => {
+        setTimeout(() => {
+          scrollViewRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    );
+
+    keyboardHideListener.current = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        // Optional: scroll to bottom when keyboard hides
+      }
+    );
+
+    return () => {
+      keyboardShowListener.current?.remove();
+      keyboardHideListener.current?.remove();
+    };
+  }, []);
 
   const handleSendMessage = async () => {
     if (!inputText.trim() || isLoading) return;
 
+    const messageText = inputText.trim();
     const userMessage: Message = {
       id: Date.now().toString(),
-      text: inputText.trim(),
+      text: messageText,
       isUser: true,
       timestamp: new Date(),
     };
@@ -47,7 +76,7 @@ export default function ChatbotScreen() {
     setIsLoading(true);
 
     try {
-      const response = await generateChatbotResponse(inputText.trim());
+      const response = await generateChatbotResponse(messageText);
       const botMessage: Message = {
         id: (Date.now() + 1).toString(),
         text: response,
@@ -56,9 +85,10 @@ export default function ChatbotScreen() {
       };
       setMessages((prev) => [...prev, botMessage]);
     } catch (error: any) {
+      console.error('Chatbot screen error:', error);
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        text: 'Scuze, am întâmpinat o eroare. Te rog încearcă din nou.',
+        text: error.message || 'Scuze, am întâmpinat o eroare. Te rog încearcă din nou.',
         isUser: false,
         timestamp: new Date(),
       };
@@ -76,14 +106,15 @@ export default function ChatbotScreen() {
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
         <ScrollView
+          ref={scrollViewRef}
           style={styles.messagesContainer}
           contentContainerStyle={styles.messagesContent}
-          ref={(ref) => {
-            if (ref && messages.length > 0) {
-              setTimeout(() => ref.scrollToEnd({ animated: true }), 100);
-            }
+          keyboardShouldPersistTaps="handled"
+          onContentSizeChange={() => {
+            scrollViewRef.current?.scrollToEnd({ animated: true });
           }}>
           {messages.map((message) => (
             <View
@@ -112,12 +143,17 @@ export default function ChatbotScreen() {
           <TextInput
             style={styles.input}
             placeholder="Scrie o întrebare..."
-            placeholderTextColor="#999"
+            placeholderTextColor="#666"
             value={inputText}
             onChangeText={setInputText}
             multiline
             maxLength={500}
             editable={!isLoading}
+            onFocus={() => {
+              setTimeout(() => {
+                scrollViewRef.current?.scrollToEnd({ animated: true });
+              }, 100);
+            }}
           />
           <TouchableOpacity
             style={[styles.sendButton, (!inputText.trim() || isLoading) && styles.sendButtonDisabled]}
@@ -134,7 +170,7 @@ export default function ChatbotScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#0a0a0a',
   },
   flex: {
     flex: 1,
@@ -145,12 +181,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 15,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
+    borderBottomColor: '#2a2a2a',
+    backgroundColor: '#1a1a1a',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#000',
+    color: '#FFFFFF',
   },
   messagesContainer: {
     flex: 1,
@@ -172,7 +209,7 @@ const styles = StyleSheet.create({
   },
   botMessage: {
     alignSelf: 'flex-start',
-    backgroundColor: '#f0f0f0',
+    backgroundColor: '#1a1a1a',
     borderBottomLeftRadius: 4,
   },
   messageText: {
@@ -183,27 +220,32 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   botMessageText: {
-    color: '#000',
+    color: '#e0e0e0',
   },
   inputContainer: {
     flexDirection: 'row',
     padding: 15,
+    paddingBottom: Platform.OS === 'ios' ? 15 : 15,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.1)',
-    backgroundColor: '#fff',
+    borderTopColor: '#2a2a2a',
+    backgroundColor: '#1a1a1a',
     alignItems: 'flex-end',
     gap: 10,
+    // Ensure input stays above keyboard
+    position: 'relative',
+    zIndex: 10,
   },
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#2a2a2a',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 16,
     maxHeight: 100,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#0a0a0a',
+    color: '#FFFFFF',
   },
   sendButton: {
     backgroundColor: '#007AFF',
