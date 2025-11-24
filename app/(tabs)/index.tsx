@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -30,8 +31,11 @@ export default function ExploreScreen() {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [locations, setLocations] = useState<Location[]>([]);
+  const [filteredLocations, setFilteredLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     fetchLocations();
@@ -41,7 +45,11 @@ export default function ExploreScreen() {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('https://thecon.ro/wp-content/uploads/2025/11/locatii.json');
+      // Try hackathon URL first, fallback to original
+      let response = await fetch('https://thecon.ro/hackathon/locatii.json').catch(() => null);
+      if (!response || !response.ok) {
+        response = await fetch('https://thecon.ro/wp-content/uploads/2025/11/locatii.json');
+      }
       
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -50,6 +58,7 @@ export default function ExploreScreen() {
       const data = await response.json();
       const locationsArray = Array.isArray(data) ? data : [];
       setLocations(locationsArray);
+      setFilteredLocations(locationsArray);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load locations';
       setError(errorMessage);
@@ -61,6 +70,32 @@ export default function ExploreScreen() {
   const toggleViewMode = () => {
     setViewMode(prev => prev === 'list' ? 'map' : 'list');
   };
+
+  // Filter, search and sort locations
+  useEffect(() => {
+    let filtered = [...locations];
+
+    // Search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(
+        (loc) =>
+          loc.name.toLowerCase().includes(query) ||
+          loc.description?.toLowerCase().includes(query)
+      );
+    }
+
+    // Sort by rating
+    filtered.sort((a, b) => {
+      if (sortOrder === 'desc') {
+        return b.rating - a.rating; // Descending (highest first)
+      } else {
+        return a.rating - b.rating; // Ascending (lowest first)
+      }
+    });
+
+    setFilteredLocations(filtered);
+  }, [searchQuery, sortOrder, locations]);
 
   const handleLocationPress = (location: Location) => {
     router.push({
@@ -97,7 +132,7 @@ export default function ExploreScreen() {
   };
 
   const renderMapView = () => {
-    if (locations.length === 0) {
+    if (filteredLocations.length === 0) {
       return (
         <View style={styles.centerContainer}>
           <Text>No locations to display on map</Text>
@@ -105,9 +140,9 @@ export default function ExploreScreen() {
       );
     }
 
-    // Calculate initial region from locations using coordinates.lat and coordinates.long
-    const latitudes = locations.map(loc => loc.coordinates.lat);
-    const longitudes = locations.map(loc => loc.coordinates.long);
+    // Calculate initial region from filtered locations using coordinates.lat and coordinates.long
+    const latitudes = filteredLocations.map(loc => loc.coordinates.lat);
+    const longitudes = filteredLocations.map(loc => loc.coordinates.long);
     const minLat = Math.min(...latitudes);
     const maxLat = Math.max(...latitudes);
     const minLng = Math.min(...longitudes);
@@ -126,7 +161,7 @@ export default function ExploreScreen() {
         initialRegion={initialRegion}
         showsUserLocation={true}
         showsMyLocationButton={true}>
-        {locations.map((location) => (
+        {filteredLocations.map((location) => (
           <Marker
             key={location.id}
             coordinate={{
@@ -172,9 +207,13 @@ export default function ExploreScreen() {
             </TouchableOpacity>
           </View>
           <View style={styles.centerContainer}>
-            <Text style={styles.errorText}>Error: {error}</Text>
+            <Text style={styles.errorIcon}>⚠️</Text>
+            <Text style={styles.errorTitle}>Eroare de conexiune</Text>
+            <Text style={styles.errorText}>
+              Nu am putut încărca locațiile. Verifică conexiunea la internet.
+            </Text>
             <TouchableOpacity style={styles.retryButton} onPress={fetchLocations}>
-              <Text style={styles.retryButtonText}>Retry</Text>
+              <Text style={styles.retryButtonText}>Încearcă din nou</Text>
             </TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -194,16 +233,76 @@ export default function ExploreScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Search and Sort Bar */}
+        {viewMode === 'list' && (
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Caută locații..."
+              placeholderTextColor="#999"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            <View style={styles.sortContainer}>
+              <Text style={styles.sortLabel}>Sortează după rating:</Text>
+              <TouchableOpacity
+                style={[
+                  styles.sortButton,
+                  sortOrder === 'desc' && styles.sortButtonActive,
+                ]}
+                onPress={() => setSortOrder('desc')}>
+                <Text
+                  style={[
+                    styles.sortButtonText,
+                    sortOrder === 'desc' && styles.sortButtonTextActive,
+                  ]}>
+                  ↓ Cel mai bun
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.sortButton,
+                  sortOrder === 'asc' && styles.sortButtonActive,
+                ]}
+                onPress={() => setSortOrder('asc')}>
+                <Text
+                  style={[
+                    styles.sortButtonText,
+                    sortOrder === 'asc' && styles.sortButtonTextActive,
+                  ]}>
+                  ↑ Cel mai slab
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {filteredLocations.length !== locations.length && (
+              <Text style={styles.resultsCount}>
+                {filteredLocations.length} din {locations.length} locații
+              </Text>
+            )}
+          </View>
+        )}
+
         {viewMode === 'list' ? (
           <FlatList
-            data={locations}
+            data={filteredLocations}
             renderItem={renderLocationCard}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <View style={styles.centerContainer}>
-                <Text>No locations found</Text>
+                <Text style={styles.emptyText}>
+                  {searchQuery ? 'Nu s-au găsit locații' : 'Nu există locații'}
+                </Text>
+                {searchQuery && (
+                  <TouchableOpacity
+                    style={styles.clearFiltersButton}
+                    onPress={() => {
+                      setSearchQuery('');
+                    }}>
+                    <Text style={styles.clearFiltersText}>Șterge căutarea</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             }
           />
@@ -235,6 +334,78 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 28,
     fontWeight: 'bold',
+  },
+  searchContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#f8f8f8',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  searchInput: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  sortContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  sortLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginRight: 4,
+  },
+  sortButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  sortButtonActive: {
+    backgroundColor: '#007AFF',
+    borderColor: '#007AFF',
+  },
+  sortButtonText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  sortButtonTextActive: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  resultsCount: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  emptyText: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 12,
+  },
+  clearFiltersButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#007AFF',
+    borderRadius: 8,
+  },
+  clearFiltersText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   toggleButton: {
     paddingHorizontal: 20,
@@ -304,10 +475,23 @@ const styles = StyleSheet.create({
     marginTop: 10,
     color: '#666',
   },
+  errorIcon: {
+    fontSize: 48,
+    marginBottom: 16,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#000',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
   errorText: {
-    color: 'red',
+    color: '#666',
     marginBottom: 20,
     textAlign: 'center',
+    paddingHorizontal: 40,
+    lineHeight: 22,
   },
   retryButton: {
     paddingHorizontal: 20,

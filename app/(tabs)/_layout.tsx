@@ -30,6 +30,13 @@ export default function TabLayout() {
           tabBarIcon: ({ color }) => <IconSymbol size={28} name="person" color={color} />,
         }}
       />
+      <Tabs.Screen
+        name="chatbot"
+        options={{
+          title: 'AI Chat',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="message" color={color} />,
+        }}
+      />
     </Tabs>
   );
 }
