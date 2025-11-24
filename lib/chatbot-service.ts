@@ -1,10 +1,16 @@
 // Chatbot AI Service
 // Folosește Google Gemini API pentru răspunsuri despre locații turistice
 
-const GEMINI_API_KEY = 'YOUR_GEMINI_API_KEY'; // Același API key ca pentru vibe generator
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyBcwycLZ_1zU53J5nzivjYclek_86c1tts'; // Setează EXPO_PUBLIC_GEMINI_API_KEY în .env
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
 
 export async function generateChatbotResponse(userMessage: string): Promise<string> {
+  // Check if API key is configured
+  if (!GEMINI_API_KEY || GEMINI_API_KEY === 'AIzaSyBcwycLZ_1zU53J5nzivjYclek_86c1tts') {
+    console.error('GEMINI_API_KEY not configured');
+    return 'Scuze, serviciul AI nu este configurat. Te rog contactează administratorul aplicației.';
+  }
+
   try {
     const prompt = `Ești un asistent AI prietenos și expert în turism pentru o aplicație mobilă de turism din România. 
     
@@ -42,18 +48,46 @@ Răspunde DOAR cu răspunsul tău, fără explicații suplimentare.`;
     );
 
     if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('API error response:', response.status, errorData);
+      
+      if (response.status === 400) {
+        throw new Error('API key invalid sau cerere incorectă');
+      } else if (response.status === 403) {
+        throw new Error('API key invalid sau fără permisiuni');
+      } else if (response.status === 429) {
+        throw new Error('Prea multe cereri. Te rog așteaptă puțin.');
+      }
       throw new Error(`API error: ${response.status}`);
     }
 
     const data = await response.json();
+    console.log('API response data:', JSON.stringify(data, null, 2));
     
     if (data.candidates && data.candidates[0] && data.candidates[0].content) {
-      return data.candidates[0].content.parts[0].text.trim();
+      const responseText = data.candidates[0].content.parts[0].text.trim();
+      return responseText;
+    }
+
+    // Check for error in response
+    if (data.error) {
+      console.error('API returned error:', data.error);
+      throw new Error(data.error.message || 'Eroare de la API');
     }
 
     throw new Error('Invalid response from AI');
   } catch (error: any) {
     console.error('Chatbot error:', error);
+    console.error('Error details:', error.message, error.stack);
+    
+    // More specific error messages
+    if (error.message?.includes('API key')) {
+      return 'Scuze, serviciul AI nu este configurat corect. Te rog contactează administratorul.';
+    }
+    
+    if (error.message?.includes('429')) {
+      return 'Prea multe cereri în acest moment. Te rog așteaptă puțin și încearcă din nou.';
+    }
     
     // Fallback responses
     const fallbackResponses = [

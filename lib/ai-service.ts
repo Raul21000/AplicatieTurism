@@ -1,13 +1,20 @@
 // AI Service pentru generarea descrierilor cu vibe
 // Folosește Google Gemini API (gratuit pentru studenți)
 
-const GEMINI_API_KEY = 'YOUR_GEMINI_API_KEY'; // Înlocuiește cu API key-ul tău
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyBcwycLZ_1zU53J5nzivjYclek_86c1tts'; // Setează EXPO_PUBLIC_GEMINI_API_KEY în .env
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
 
 export async function generateVibeDescription(
   locationName: string,
   originalDescription: string
 ): Promise<string> {
+  // Check if API key is configured
+  if (!GEMINI_API_KEY || GEMINI_API_KEY === 'AIzaSyBcwycLZ_1zU53J5nzivjYclek_86c1tts') {
+    console.error('GEMINI_API_KEY not configured');
+    // Return enhanced description without AI
+    return `✨ ${locationName} - ${originalDescription} Un loc perfect pentru a te relaxa și a te bucura de momente speciale. Atmosfera este primitoare și vibe-ul este exact ce ai nevoie pentru o experiență memorabilă!`;
+  }
+
   try {
     const prompt = `Rescrie următoarea descriere scurtă a locației "${locationName}" într-un stil creativ, atractiv și plin de vibe. Descrierea originală este: "${originalDescription}". 
 
