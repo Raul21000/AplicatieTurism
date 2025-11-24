@@ -1,7 +1,10 @@
+import { generateVibeDescription } from '@/lib/ai-service';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Linking,
   SafeAreaView,
   ScrollView,
@@ -14,9 +17,15 @@ import {
 export default function DetailsScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
+  const [description, setDescription] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Parse location data from params
   const location = params.location ? JSON.parse(params.location as string) : null;
+  
+  // Initialize description with original
+  const originalDescription = location?.description || '';
+  const displayDescription = description || originalDescription;
 
   if (!location) {
     return (
@@ -39,9 +48,25 @@ export default function DetailsScreen() {
     });
   };
 
-  const handleGenerateVibe = () => {
-    // TODO: Implement AI vibe generation
-    console.log('Generate vibe for:', location.name);
+  const handleGenerateVibe = async () => {
+    if (!location) return;
+
+    try {
+      setIsGenerating(true);
+      const generatedDescription = await generateVibeDescription(
+        location.name,
+        originalDescription
+      );
+      setDescription(generatedDescription);
+    } catch (error: any) {
+      console.error('Error generating vibe:', error);
+      Alert.alert(
+        'Eroare',
+        'Nu am putut genera descrierea. Verifică conexiunea la internet sau API key-ul.'
+      );
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -62,8 +87,13 @@ export default function DetailsScreen() {
           <Text style={styles.rating}>⭐ {location.rating.toFixed(1)}</Text>
 
           {/* Description */}
-          {location.description && (
-            <Text style={styles.description}>{location.description}</Text>
+          {displayDescription && (
+            <View>
+              <Text style={styles.description}>{displayDescription}</Text>
+              {description && (
+                <Text style={styles.generatedLabel}>✨ Descriere generată cu AI</Text>
+              )}
+            </View>
           )}
         </View>
       </ScrollView>
@@ -77,9 +107,17 @@ export default function DetailsScreen() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.vibeButton}
-          onPress={handleGenerateVibe}>
-          <Text style={styles.vibeButtonText}>✨ Generează Vibe AI</Text>
+          style={[styles.vibeButton, isGenerating && styles.buttonDisabled]}
+          onPress={handleGenerateVibe}
+          disabled={isGenerating}>
+          {isGenerating ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator color="#fff" size="small" />
+              <Text style={styles.vibeButtonText}>Generând...</Text>
+            </View>
+          ) : (
+            <Text style={styles.vibeButtonText}>✨ Generează Vibe AI</Text>
+          )}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -120,6 +158,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#b0b0b0',
     lineHeight: 26,
+    marginBottom: 8,
+  },
+  generatedLabel: {
+    fontSize: 12,
+    color: '#5856D6',
+    fontStyle: 'italic',
+    marginTop: 8,
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
   },
   buttonContainer: {
     padding: 20,
