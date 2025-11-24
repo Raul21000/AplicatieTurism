@@ -50,11 +50,28 @@ export async function initDatabase(): Promise<SQLite.SQLiteDatabase> {
     );
   `);
 
+  // Create saved_locations table for saving favorite locations
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS saved_locations (
+      saved_id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      location_id TEXT NOT NULL,
+      location_name TEXT NOT NULL,
+      location_image_url TEXT,
+      location_rating REAL,
+      location_description TEXT,
+      saved_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (account_id) REFERENCES accounts(accid)
+    );
+  `);
+
   // Create indexes for better performance
   await db.execAsync(`
     CREATE INDEX IF NOT EXISTS idx_accounts_email ON accounts(email);
     CREATE INDEX IF NOT EXISTS idx_visits_account ON visits_and_reviews(account_id);
     CREATE INDEX IF NOT EXISTS idx_visits_location ON visits_and_reviews(location_id);
+    CREATE INDEX IF NOT EXISTS idx_saved_account ON saved_locations(account_id);
+    CREATE INDEX IF NOT EXISTS idx_saved_location ON saved_locations(location_id);
   `);
 
   return db;
@@ -76,6 +93,10 @@ export function generateLocationId(): string {
 
 export function generateReviewId(): string {
   return generateId('R');
+}
+
+export function generateSavedId(): string {
+  return generateId('S');
 }
 
 // Get database instance
@@ -143,4 +164,114 @@ export async function getDatabaseStats() {
     locations: locationsResult?.count || 0,
     reviews: reviewsResult?.count || 0,
   };
+}
+
+// Get username by email
+export async function getUsernameByEmail(email: string): Promise<string | null> {
+  try {
+    const db = await getDatabase();
+    const result = await db.getFirstAsync<{ username: string }>(
+      'SELECT username FROM accounts WHERE email = ?',
+      [email.toLowerCase().trim()]
+    );
+    return result?.username || null;
+  } catch (error) {
+    console.error('Error getting username by email:', error);
+    return null;
+  }
+}
+
+// Save location for user
+export async function saveLocation(
+  accountId: string,
+  locationId: string,
+  locationName: string,
+  locationImageUrl: string,
+  locationRating: number,
+  locationDescription?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const db = await getDatabase();
+    
+    // Check if location is already saved
+    const existing = await db.getFirstAsync<{ saved_id: string }>(
+      'SELECT saved_id FROM saved_locations WHERE account_id = ? AND location_id = ?',
+      [accountId, locationId]
+    );
+
+    if (existing) {
+      return { success: false, error: 'Locația este deja salvată' };
+    }
+
+    // Generate saved_id
+    const savedId = generateSavedId();
+
+    // Insert saved location
+    await db.runAsync(
+      `INSERT INTO saved_locations 
+       (saved_id, account_id, location_id, location_name, location_image_url, location_rating, location_description)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [savedId, accountId, locationId, locationName, locationImageUrl, locationRating, locationDescription || null]
+    );
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error saving location:', error);
+    return { success: false, error: error.message || 'Eroare la salvarea locației' };
+  }
+}
+
+// Get saved locations for user
+export async function getSavedLocations(accountId: string) {
+  try {
+    const db = await getDatabase();
+    return await db.getAllAsync<{
+      saved_id: string;
+      location_id: string;
+      location_name: string;
+      location_image_url: string | null;
+      location_rating: number;
+      location_description: string | null;
+      saved_at: string;
+    }>(
+      `SELECT saved_id, location_id, location_name, location_image_url, location_rating, location_description, saved_at
+       FROM saved_locations 
+       WHERE account_id = ? 
+       ORDER BY saved_at DESC`,
+      [accountId]
+    );
+  } catch (error) {
+    console.error('Error getting saved locations:', error);
+    return [];
+  }
+}
+
+// Remove saved location
+export async function removeSavedLocation(accountId: string, locationId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const db = await getDatabase();
+    await db.runAsync(
+      'DELETE FROM saved_locations WHERE account_id = ? AND location_id = ?',
+      [accountId, locationId]
+    );
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error removing saved location:', error);
+    return { success: false, error: error.message || 'Eroare la ștergerea locației' };
+  }
+}
+
+// Check if location is saved
+export async function isLocationSaved(accountId: string, locationId: string): Promise<boolean> {
+  try {
+    const db = await getDatabase();
+    const result = await db.getFirstAsync<{ saved_id: string }>(
+      'SELECT saved_id FROM saved_locations WHERE account_id = ? AND location_id = ?',
+      [accountId, locationId]
+    );
+    return !!result;
+  } catch (error) {
+    console.error('Error checking if location is saved:', error);
+    return false;
+  }
 }

@@ -1,9 +1,9 @@
-import 'react-native-get-random-values';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import 'react-native-get-random-values';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -21,25 +21,39 @@ export default function RootLayout() {
   const segments = useSegments();
   const router = useRouter();
 
+  // Function to check and update session
+  const checkSession = async () => {
+    try {
+      await initDatabase();
+      const storedSession = await getSession();
+      // Verify session exists in database
+      const verifiedSession = await verifySession(storedSession);
+      setSession(verifiedSession);
+      return verifiedSession;
+    } catch (error) {
+      console.error('Error checking session:', error);
+      setSession(null);
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     // Initialize database and verify session against database
-    const checkSession = async () => {
-      try {
-        await initDatabase();
-        const storedSession = await getSession();
-        // Verify session exists in database
-        const verifiedSession = await verifySession(storedSession);
-        setSession(verifiedSession);
-      } catch (error) {
-        console.error('Error initializing app:', error);
-        setSession(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     checkSession();
   }, []);
+
+  // Re-check session when segments change (e.g., after navigation)
+  useEffect(() => {
+    if (!loading && segments.length > 0) {
+      const currentSegment = segments[0] as string;
+      // Re-check session when navigating to tabs or auth screens
+      if (currentSegment === '(tabs)' || currentSegment === 'login' || currentSegment === 'signup') {
+        checkSession();
+      }
+    }
+  }, [segments, loading]);
 
   useEffect(() => {
     if (loading) return;

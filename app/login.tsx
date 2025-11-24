@@ -54,7 +54,8 @@ export default function LoginScreen() {
       }
 
       // Only navigate if we have a valid session
-      console.log('Login successful, navigating to tabs');
+      console.log('Login successful, session stored:', session);
+      // Navigate immediately - _layout.tsx will verify session
       router.replace('/(tabs)' as any);
     } catch (err: any) {
       console.error('Login error:', err);
