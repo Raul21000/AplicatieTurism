@@ -24,10 +24,10 @@ const AI_PROVIDERS: AIProviderConfig[] = [
   // Gemini - Primary (fast)
   {
     provider: 'gemini',
-    apiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyDabDp_Y5nHNImaZNII1f_NhVQrD_iAkcE',
+    apiKey: process.env.EXPO_PUBLIC_GEMINI_API_KEY || '', // Set EXPO_PUBLIC_GEMINI_API_KEY in .env
     model: 'gemini-2.5-flash',
     priority: 1,
-    enabled: true,
+    enabled: !!process.env.EXPO_PUBLIC_GEMINI_API_KEY, // Only enable if key is set
   },
   // Gemini - Secondary (backup key or different model)
   {
@@ -40,10 +40,10 @@ const AI_PROVIDERS: AIProviderConfig[] = [
   // OpenAI - Fallback provider
   {
     provider: 'openai',
-    apiKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY || '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',
+    apiKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY || '', // Set EXPO_PUBLIC_OPENAI_API_KEY in .env
     model: 'gpt-3.5-turbo',
     priority: 2,
-    enabled: true, // Enabled as fallback
+    enabled: !!process.env.EXPO_PUBLIC_OPENAI_API_KEY, // Only enable if key is set
   },
 ];
 
