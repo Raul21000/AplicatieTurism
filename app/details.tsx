@@ -1,4 +1,4 @@
-import { generateVibeDescription } from '@/lib/ai-service';
+import { generateVibeDescription, generateDetailedDescription, generateBaseDescription } from '@/lib/ai-service';
 import { getSession } from '@/lib/auth-helpers';
 import { isLocationSaved, removeSavedLocation, saveLocation } from '@/lib/database';
 import { Image } from 'expo-image';
@@ -19,8 +19,12 @@ import {
 export default function DetailsScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
+  const [baseDescription, setBaseDescription] = useState<string | null>(null);
   const [description, setDescription] = useState<string | null>(null);
+  const [detailedDescription, setDetailedDescription] = useState<string | null>(null);
+  const [isGeneratingBase, setIsGeneratingBase] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingDetailed, setIsGeneratingDetailed] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [checkingSaved, setCheckingSaved] = useState(true);
@@ -30,11 +34,33 @@ export default function DetailsScreen() {
   
   // Initialize description with original
   const originalDescription = location?.description || '';
-  const displayDescription = description || originalDescription;
 
   useEffect(() => {
     checkIfSaved();
+    // Generate base description automatically when location loads
+    if (location && !baseDescription) {
+      generateBaseDescriptionForLocation();
+    }
   }, [location]);
+
+  const generateBaseDescriptionForLocation = async () => {
+    if (!location) return;
+
+    try {
+      setIsGeneratingBase(true);
+      const generatedBase = await generateBaseDescription(
+        location.name,
+        originalDescription
+      );
+      setBaseDescription(generatedBase);
+    } catch (error: any) {
+      console.error('Error generating base description:', error);
+      // Fallback to original description if generation fails
+      setBaseDescription(originalDescription || `${location.name} este o destinație turistică remarcabilă din România.`);
+    } finally {
+      setIsGeneratingBase(false);
+    }
+  };
 
   const checkIfSaved = async () => {
     if (!location) {
@@ -97,6 +123,28 @@ export default function DetailsScreen() {
       );
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleGenerateDetailed = async () => {
+    if (!location || !baseDescription) return;
+
+    try {
+      setIsGeneratingDetailed(true);
+      // Use base description as context to extend
+      const generatedDetailed = await generateDetailedDescription(
+        location.name,
+        baseDescription
+      );
+      setDetailedDescription(generatedDetailed);
+    } catch (error: any) {
+      console.error('Error generating detailed description:', error);
+      Alert.alert(
+        'Eroare',
+        'Nu am putut genera descrierea detaliată. Verifică conexiunea la internet sau API key-ul.'
+      );
+    } finally {
+      setIsGeneratingDetailed(false);
     }
   };
 
@@ -164,13 +212,51 @@ export default function DetailsScreen() {
           <Text style={styles.title}>{location.name}</Text>
           <Text style={styles.rating}>⭐ {location.rating.toFixed(1)}</Text>
 
-          {/* Description */}
-          {displayDescription && (
-            <View>
-              <Text style={styles.description}>{displayDescription}</Text>
-              {description && (
-                <Text style={styles.generatedLabel}>✨ Descriere generată cu AI</Text>
-              )}
+          {/* Base Description (always shown, generated automatically) */}
+          {isGeneratingBase ? (
+            <View style={styles.descriptionContainer}>
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator color="#007AFF" size="small" />
+                <Text style={styles.loadingText}>Generând descriere de bază...</Text>
+              </View>
+            </View>
+          ) : baseDescription ? (
+            <View style={styles.descriptionContainer}>
+              <Text style={styles.description}>{baseDescription}</Text>
+              
+              {/* Button to generate detailed description */}
+              <TouchableOpacity
+                style={[styles.detailedButton, isGeneratingDetailed && styles.buttonDisabled]}
+                onPress={handleGenerateDetailed}
+                disabled={isGeneratingDetailed || !baseDescription}>
+                {isGeneratingDetailed ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator color="#007AFF" size="small" />
+                    <Text style={styles.detailedButtonText}>Extindând descrierea...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.detailedButtonText}>
+                    📖 Extinde cu descriere detaliată AI
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
+          {/* Detailed Description (shown when generated) */}
+          {detailedDescription && (
+            <View style={styles.detailedContainer}>
+              <Text style={styles.detailedTitle}>Descriere detaliată</Text>
+              <Text style={styles.detailedText}>{detailedDescription}</Text>
+              <Text style={styles.generatedLabel}>✨ Generată cu AI</Text>
+            </View>
+          )}
+
+          {/* Vibe Description (if generated) */}
+          {description && description !== casualDescription && (
+            <View style={styles.vibeContainer}>
+              <Text style={styles.vibeTitle}>✨ Descriere creativă</Text>
+              <Text style={styles.description}>{description}</Text>
             </View>
           )}
         </View>
@@ -252,10 +338,66 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     color: '#007AFF',
   },
+  descriptionContainer: {
+    marginBottom: 24,
+  },
   description: {
     fontSize: 16,
     color: '#b0b0b0',
     lineHeight: 26,
+    marginBottom: 16,
+  },
+  loadingText: {
+    fontSize: 14,
+    color: '#b0b0b0',
+    marginLeft: 8,
+  },
+  detailedButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  detailedButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  detailedContainer: {
+    marginTop: 24,
+    padding: 20,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  detailedTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  detailedText: {
+    fontSize: 16,
+    color: '#d0d0d0',
+    lineHeight: 26,
+    marginBottom: 8,
+  },
+  vibeContainer: {
+    marginTop: 20,
+    padding: 16,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#5856D6',
+  },
+  vibeTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#5856D6',
     marginBottom: 8,
   },
   generatedLabel: {

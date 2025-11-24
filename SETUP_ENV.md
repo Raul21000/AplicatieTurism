@@ -23,10 +23,10 @@ Open `.env` and add your keys:
 
 ```env
 # Gemini API Key (required)
-EXPO_PUBLIC_GEMINI_API_KEY=AIzaSyDabDp_Y5nHNImaZNII1f_NhVQrD_iAkcE
+EXPO_PUBLIC_GEMINI_API_KEY=your_gemini_api_key_here
 
 # OpenAI API Key (optional)
-EXPO_PUBLIC_OPENAI_API_KEY=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
+EXPO_PUBLIC_OPENAI_API_KEY=your_openai_api_key_here
 ```
 
 ### 3. Verify `.gitignore`
