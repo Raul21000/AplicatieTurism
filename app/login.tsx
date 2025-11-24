@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { signInWithAccount } from '@/lib/auth-helpers';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
@@ -12,14 +12,19 @@ import {
   View,
 } from 'react-native';
 
-export default function AuthScreen() {
+export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [signInLoading, setSignInLoading] = useState(false);
-  const [signUpLoading, setSignUpLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSignIn = async () => {
+  // Prevent auto-navigation - user must login manually
+  React.useEffect(() => {
+    // This screen should always be accessible for login
+    // Navigation is handled by _layout.tsx based on session
+  }, []);
+
+  const handleLogin = async () => {
     if (!email || !password) {
       Alert.alert('Eroare', 'Te rog completează toate câmpurile');
       return;
@@ -33,67 +38,28 @@ export default function AuthScreen() {
     }
 
     try {
-      setSignInLoading(true);
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      setLoading(true);
+      const { session, error } = await signInWithAccount(email, password);
 
       if (error) {
         Alert.alert('Eroare la autentificare', error.message);
-        setSignInLoading(false);
-      } else {
-        // Success - navigate to tabs
-        router.replace('/(tabs)' as any);
+        setLoading(false);
+        return; // Don't navigate on error
       }
-    } catch (err: any) {
-      Alert.alert('Eroare', err.message || 'A apărut o eroare neașteptată');
-      setSignInLoading(false);
-    }
-  };
-
-  const handleSignUp = async () => {
-    if (!email || !password) {
-      Alert.alert('Eroare', 'Te rog completează toate câmpurile');
-      return;
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      Alert.alert('Eroare', 'Te rog introdu un email valid (format: name@domain.com)');
-      return;
-    }
-
-    if (password.length < 6) {
-      Alert.alert('Eroare', 'Parola trebuie să aibă cel puțin 6 caractere');
-      return;
-    }
-
-    try {
-      setSignUpLoading(true);
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-
-      if (error) {
-        Alert.alert('Eroare la înregistrare', error.message);
-        setSignUpLoading(false);
-      } else {
-        // Check if email confirmation is required
-        if (data.user && !data.session) {
-          Alert.alert('Succes', 'Cont creat! Te rugăm să verifici email-ul pentru confirmare.');
-          setSignUpLoading(false);
-        } else {
-          // Auto-confirm is active, user is logged in
-          Alert.alert('Succes', 'Contul a fost creat cu succes!');
-          router.replace('/(tabs)' as any);
-        }
+      
+      if (!session) {
+        Alert.alert('Eroare', 'Autentificare eșuată. Te rog încearcă din nou.');
+        setLoading(false);
+        return; // Don't navigate if no session
       }
+
+      // Only navigate if we have a valid session
+      console.log('Login successful, navigating to tabs');
+      router.replace('/(tabs)' as any);
     } catch (err: any) {
+      console.error('Login error:', err);
       Alert.alert('Eroare', err.message || 'A apărut o eroare neașteptată');
-      setSignUpLoading(false);
+      setLoading(false);
     }
   };
 
@@ -113,7 +79,7 @@ export default function AuthScreen() {
             keyboardType="email-address"
             autoCapitalize="none"
             autoComplete="email"
-            editable={!signInLoading && !signUpLoading}
+            editable={!loading}
           />
         </View>
 
@@ -128,33 +94,28 @@ export default function AuthScreen() {
             secureTextEntry
             autoCapitalize="none"
             autoComplete="password"
-            editable={!signInLoading && !signUpLoading}
+            editable={!loading}
           />
         </View>
 
         <TouchableOpacity
-          style={[styles.button, styles.signInButton, (signInLoading) && styles.buttonDisabled]}
-          onPress={handleSignIn}
-          disabled={signInLoading}
+          style={[styles.button, styles.loginButton, loading && styles.buttonDisabled]}
+          onPress={handleLogin}
+          disabled={loading}
           activeOpacity={0.7}>
-          {signInLoading ? (
+          {loading ? (
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.buttonText}>Autentificare</Text>
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.button, styles.signUpButton, (signUpLoading) && styles.buttonDisabled]}
-          onPress={handleSignUp}
-          disabled={signUpLoading}
-          activeOpacity={0.7}>
-          {signUpLoading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>Înregistrare</Text>
-          )}
-        </TouchableOpacity>
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Nu ai cont?</Text>
+          <TouchableOpacity onPress={() => router.push('/signup' as any)}>
+            <Text style={styles.linkText}>Înregistrează-te</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -163,7 +124,7 @@ export default function AuthScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#0a0a0a',
   },
   content: {
     flex: 1,
@@ -173,9 +134,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#000',
+    color: '#FFFFFF',
     marginBottom: 40,
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   inputContainer: {
     marginBottom: 20,
@@ -183,32 +145,37 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
+    color: '#b0b0b0',
     marginBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
+    borderColor: '#2a2a2a',
+    borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
     fontSize: 16,
-    backgroundColor: '#fff',
-    color: '#000',
+    backgroundColor: '#1a1a1a',
+    color: '#FFFFFF',
   },
   button: {
     paddingVertical: 16,
     paddingHorizontal: 24,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginTop: 10,
+    shadowColor: '#007AFF',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  signInButton: {
+  loginButton: {
     backgroundColor: '#007AFF',
-  },
-  signUpButton: {
-    backgroundColor: '#34C759',
   },
   buttonDisabled: {
     opacity: 0.5,
@@ -217,6 +184,23 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
+    letterSpacing: 0.5,
+  },
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 30,
+    gap: 8,
+  },
+  footerText: {
+    fontSize: 16,
+    color: '#b0b0b0',
+  },
+  linkText: {
+    fontSize: 16,
+    color: '#007AFF',
+    fontWeight: '600',
   },
 });
 

@@ -1,5 +1,7 @@
+import 'react-native-get-random-values';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { supabase } from './supabase';
+import bcrypt from 'bcryptjs';
+import { getDatabase, generateAccountId, initDatabase } from './database';
 
 const SESSION_KEY = '@user_session';
 
@@ -39,6 +41,43 @@ export async function getSession(): Promise<Session | null> {
   }
 }
 
+// Verify session against database - ensures account still exists
+export async function verifySession(session: Session | null): Promise<Session | null> {
+  if (!session) {
+    return null;
+  }
+
+  try {
+    await initDatabase();
+    const db = await getDatabase();
+    
+    // Check if account still exists in database
+    const account = await db.getFirstAsync<{
+      accid: string;
+      username: string;
+      email: string;
+      created_at: string;
+    }>(
+      'SELECT accid, username, email, created_at FROM accounts WHERE accid = ? AND email = ?',
+      [session.account.accid, session.email]
+    );
+
+    if (!account) {
+      // Account doesn't exist anymore, clear session
+      await clearSession();
+      return null;
+    }
+
+    // Return valid session
+    return session;
+  } catch (error) {
+    console.error('Error verifying session:', error);
+    // On error, clear session to be safe
+    await clearSession();
+    return null;
+  }
+}
+
 // Clear session
 export async function clearSession() {
   try {
@@ -62,96 +101,68 @@ export async function signOut() {
   }
 }
 
-// Sign in with email and password from accounts table
+// Hash password
+function hashPassword(password: string): string {
+  const salt = bcrypt.genSaltSync(10);
+  return bcrypt.hashSync(password, salt);
+}
+
+// Verify password
+function verifyPassword(password: string, hash: string): boolean {
+  return bcrypt.compareSync(password, hash);
+}
+
+// Validate email format
+function isValidEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+// Sign in with email and password
 export async function signInWithAccount(email: string, password: string) {
   try {
+    await initDatabase();
+    const db = await getDatabase();
     const normalizedEmail = email.toLowerCase().trim();
-    console.log('Sign in attempt for email:', normalizedEmail);
 
-    // First, get the account by email
-    const { data: accountData, error: accountError } = await supabase
-      .from('accounts')
-      .select('accid, username, email, password_hash, created_at')
-      .eq('email', normalizedEmail)
-      .single();
-
-    console.log('Account query result:', { accountData, accountError });
-
-    if (accountError) {
-      console.error('Account error:', accountError);
-      if (accountError.code === 'PGRST116') {
-        throw new Error('Email sau parolă incorectă');
-      }
-      throw new Error(`Eroare la căutarea contului: ${accountError.message}`);
+    if (!isValidEmail(normalizedEmail)) {
+      throw new Error('Format email invalid');
     }
 
-    if (!accountData) {
-      throw new Error('Email sau parolă incorectă');
-    }
-
-    console.log('Account found:', accountData.accid);
-
-    // Verify password using Supabase RPC function
-    console.log('Calling verify_password RPC...');
-    let passwordVerified = false;
-
-    // Try the main verify_password function first
-    const { data: verifyData, error: verifyError } = await supabase.rpc(
-      'verify_password',
-      {
-        p_email: normalizedEmail,
-        p_password: password,
-      }
+    // Get account by email
+    const result = await db.getFirstAsync<{
+      accid: string;
+      username: string;
+      email: string;
+      password_hash: string;
+      created_at: string;
+    }>(
+      'SELECT accid, username, email, password_hash, created_at FROM accounts WHERE email = ?',
+      [normalizedEmail]
     );
 
-    console.log('Verify password result:', { verifyData, verifyError });
-
-    if (verifyError) {
-      console.error('RPC verify_password error:', verifyError);
-      console.log('Trying alternative method with verify_password_direct...');
-      
-      // Alternative: Try to verify using direct password hash comparison
-      const { data: directVerify, error: directError } = await supabase.rpc(
-        'verify_password_direct',
-        {
-          p_password_hash: accountData.password_hash,
-          p_password: password,
-        }
-      );
-
-      console.log('Direct verify result:', { directVerify, directError });
-
-      if (directError) {
-        console.error('Direct verify error:', directError);
-        throw new Error(`Eroare la verificarea parolei: ${directError.message}. Verifică dacă funcțiile SQL sunt create în Supabase.`);
-      }
-
-      passwordVerified = directVerify === true;
-    } else {
-      // RPC function worked
-      passwordVerified = verifyData === true;
-    }
-
-    if (!passwordVerified) {
-      console.log('Password verification failed');
+    if (!result) {
       throw new Error('Email sau parolă incorectă');
     }
 
-    console.log('Password verified successfully');
+    // Verify password
+    const passwordVerified = verifyPassword(password, result.password_hash);
+    if (!passwordVerified) {
+      throw new Error('Email sau parolă incorectă');
+    }
 
-    // If password is correct, create session
+    // Create session
     const session: Session = {
       account: {
-        accid: accountData.accid,
-        username: accountData.username,
-        email: accountData.email,
-        created_at: accountData.created_at,
+        accid: result.accid,
+        username: result.username,
+        email: result.email,
+        created_at: result.created_at,
       },
-      email: accountData.email,
+      email: result.email,
     };
 
     await storeSession(session);
-    console.log('Session stored successfully');
     return { session, error: null };
   } catch (error: any) {
     console.error('Sign in error:', error);
@@ -169,48 +180,48 @@ export async function signUpWithAccount(
   username?: string
 ) {
   try {
-    // Check if email already exists
-    const { data: existingAccounts, error: checkError } = await supabase
-      .from('accounts')
-      .select('email')
-      .eq('email', email.toLowerCase().trim());
+    await initDatabase();
+    const db = await getDatabase();
+    const normalizedEmail = email.toLowerCase().trim();
 
-    if (checkError && checkError.code !== 'PGRST116') {
-      // PGRST116 means no rows found, which is what we want
-      throw new Error('Eroare la verificarea email-ului');
+    if (!isValidEmail(normalizedEmail)) {
+      throw new Error('Format email invalid (trebuie să fie name@domain.com)');
     }
 
-    if (existingAccounts && existingAccounts.length > 0) {
+    // Check if email already exists
+    const existing = await db.getFirstAsync<{ email: string }>(
+      'SELECT email FROM accounts WHERE email = ?',
+      [normalizedEmail]
+    );
+
+    if (existing) {
       throw new Error('Acest email este deja înregistrat');
     }
 
-    // Hash password using Supabase RPC function
-    // Note: You need to create this function in Supabase
-    const { data: hashData, error: hashError } = await supabase.rpc(
-      'hash_password',
-      {
-        p_password: password,
-      }
-    );
+    // Hash password
+    const passwordHash = hashPassword(password);
 
-    if (hashError || !hashData) {
-      throw new Error('Eroare la procesarea parolei');
-    }
+    // Generate account ID
+    const accid = generateAccountId();
 
     // Insert new account
-    const { data: newAccount, error: insertError } = await supabase
-      .from('accounts')
-      .insert([
-        {
-          email: email.toLowerCase().trim(),
-          password_hash: hashData,
-          username: username || email.split('@')[0],
-        },
-      ])
-      .select('accid, username, email, created_at')
-      .single();
+    await db.runAsync(
+      'INSERT INTO accounts (accid, username, email, password_hash) VALUES (?, ?, ?, ?)',
+      [accid, username || normalizedEmail.split('@')[0], normalizedEmail, passwordHash]
+    );
 
-    if (insertError || !newAccount) {
+    // Get created account
+    const newAccount = await db.getFirstAsync<{
+      accid: string;
+      username: string;
+      email: string;
+      created_at: string;
+    }>(
+      'SELECT accid, username, email, created_at FROM accounts WHERE accid = ?',
+      [accid]
+    );
+
+    if (!newAccount) {
       throw new Error('Eroare la crearea contului');
     }
 
@@ -235,4 +246,3 @@ export async function signUpWithAccount(
     };
   }
 }
-

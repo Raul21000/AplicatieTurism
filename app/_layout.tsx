@@ -1,3 +1,4 @@
+import 'react-native-get-random-values';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -6,7 +7,8 @@ import { ActivityIndicator, View } from 'react-native';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { supabase } from '@/lib/supabase';
+import { getSession, verifySession } from '@/lib/auth-helpers';
+import { initDatabase } from '@/lib/database';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -20,32 +22,35 @@ export default function RootLayout() {
   const router = useRouter();
 
   useEffect(() => {
-    // Check initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setLoading(false);
-    });
+    // Initialize database and verify session against database
+    const checkSession = async () => {
+      try {
+        await initDatabase();
+        const storedSession = await getSession();
+        // Verify session exists in database
+        const verifiedSession = await verifySession(storedSession);
+        setSession(verifiedSession);
+      } catch (error) {
+        console.error('Error initializing app:', error);
+        setSession(null);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
+    checkSession();
   }, []);
 
   useEffect(() => {
     if (loading) return;
 
     const currentSegment = segments[0] as string;
-    const inAuthGroup = currentSegment === 'auth';
+    const inAuthGroup = currentSegment === 'login' || currentSegment === 'signup';
     const inTabsGroup = currentSegment === '(tabs)';
 
     if (!session && !inAuthGroup) {
-      // Redirect to auth if not authenticated
-      router.replace('/auth' as any);
+      // Redirect to login if not authenticated
+      router.replace('/login' as any);
     } else if (session && inAuthGroup) {
       // Redirect to tabs if authenticated and on auth screen
       router.replace('/(tabs)');
@@ -76,7 +81,8 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={modernDarkTheme}>
       <Stack>
-        <Stack.Screen name="auth" options={{ headerShown: false }} />
+        <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="signup" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen 
           name="modal" 

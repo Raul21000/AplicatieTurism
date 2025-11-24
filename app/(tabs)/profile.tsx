@@ -1,5 +1,8 @@
+import { signOut } from '@/lib/auth-helpers';
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import {
+  Alert,
   FlatList,
   SafeAreaView,
   ScrollView,
@@ -50,9 +53,37 @@ const mockSavedLocations: SavedLocation[] = [
 ];
 
 export default function ProfileScreen() {
-  const handleLogout = () => {
-    // TODO: Implement logout functionality
-    console.log('Logout pressed');
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    Alert.alert(
+      'Deconectare',
+      'Ești sigur că vrei să te deconectezi?',
+      [
+        {
+          text: 'Anulează',
+          style: 'cancel',
+        },
+        {
+          text: 'Deconectează-te',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await signOut();
+              if (error) {
+                Alert.alert('Eroare', 'Nu s-a putut efectua deconectarea');
+              } else {
+                // Navigate to login page
+                router.replace('/login' as any);
+              }
+            } catch (err: any) {
+              console.error('Logout error:', err);
+              Alert.alert('Eroare', 'A apărut o eroare la deconectare');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const renderSavedLocation = ({ item }: { item: SavedLocation }) => {
