@@ -6,7 +6,7 @@ const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/
 
 export async function generateChatbotResponse(userMessage: string): Promise<string> {
   // Check if API key is configured
-  if (!GEMINI_API_KEY || GEMINI_API_KEY === 'AIzaSyBcwycLZ_1zU53J5nzivjYclek_86c1tts') {
+  if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') {
     console.error('GEMINI_API_KEY not configured');
     return 'Scuze, serviciul AI nu este configurat. Te rog contactează administratorul aplicației.';
   }

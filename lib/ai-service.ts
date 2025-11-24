@@ -8,12 +8,12 @@ export async function generateVibeDescription(
   locationName: string,
   originalDescription: string
 ): Promise<string> {
-  // Check if API key is configured
-  if (!GEMINI_API_KEY || GEMINI_API_KEY === 'AIzaSyBcwycLZ_1zU53J5nzivjYclek_86c1tts') {
-    console.error('GEMINI_API_KEY not configured');
-    // Return enhanced description without AI
-    return `✨ ${locationName} - ${originalDescription} Un loc perfect pentru a te relaxa și a te bucura de momente speciale. Atmosfera este primitoare și vibe-ul este exact ce ai nevoie pentru o experiență memorabilă!`;
-  }
+    // Check if API key is configured
+    if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') {
+      console.error('GEMINI_API_KEY not configured');
+      // Return enhanced description without AI
+      return `✨ ${locationName} - ${originalDescription} Un loc perfect pentru a te relaxa și a te bucura de momente speciale. Atmosfera este primitoare și vibe-ul este exact ce ai nevoie pentru o experiență memorabilă!`;
+    }
 
   try {
     const prompt = `Rescrie următoarea descriere scurtă a locației "${locationName}" într-un stil creativ, atractiv și plin de vibe. Descrierea originală este: "${originalDescription}". 

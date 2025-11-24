@@ -2,6 +2,8 @@ import 'react-native-get-random-values';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import bcrypt from 'bcryptjs';
 import { getDatabase, generateAccountId, initDatabase } from './database';
+import { syncAccountOnAuth, isServerAvailable, isSyncEnabled } from './sync-service';
+import { signInOnServer, signUpOnServer } from './api-client';
 
 const SESSION_KEY = '@user_session';
 
@@ -163,6 +165,54 @@ export async function signInWithAccount(email: string, password: string) {
     };
 
     await storeSession(session);
+
+    // Try to sync with server if available
+    try {
+      const serverAvailable = await isServerAvailable();
+      const syncEnabled = await isSyncEnabled();
+      
+      if (serverAvailable && syncEnabled) {
+        // Try server login first, if it works, use server session
+        const serverResponse = await signInOnServer(email, password);
+        if (serverResponse.data?.session) {
+          // Server has the account, sync local account to server
+          const db = await getDatabase();
+          const accountWithHash = await db.getFirstAsync<{ password_hash: string }>(
+            'SELECT password_hash FROM accounts WHERE accid = ?',
+            [result.accid]
+          );
+          if (accountWithHash) {
+            await syncAccountOnAuth({
+              accid: result.accid,
+              username: result.username,
+              email: result.email,
+              password_hash: accountWithHash.password_hash,
+              created_at: result.created_at,
+            });
+          }
+        } else {
+          // Server doesn't have account, sync local to server
+          const db = await getDatabase();
+          const accountWithHash = await db.getFirstAsync<{ password_hash: string }>(
+            'SELECT password_hash FROM accounts WHERE accid = ?',
+            [result.accid]
+          );
+          if (accountWithHash) {
+            await syncAccountOnAuth({
+              accid: result.accid,
+              username: result.username,
+              email: result.email,
+              password_hash: accountWithHash.password_hash,
+              created_at: result.created_at,
+            });
+          }
+        }
+      }
+    } catch (syncError) {
+      console.error('Sync error during login (non-critical):', syncError);
+      // Continue with local session even if sync fails
+    }
+
     return { session, error: null };
   } catch (error: any) {
     console.error('Sign in error:', error);
@@ -237,6 +287,27 @@ export async function signUpWithAccount(
     };
 
     await storeSession(session);
+
+    // Try to sync with server if available
+    try {
+      const serverAvailable = await isServerAvailable();
+      const syncEnabled = await isSyncEnabled();
+      
+      if (serverAvailable && syncEnabled) {
+        // Sync account to server
+        await syncAccountOnAuth({
+          accid: newAccount.accid,
+          username: newAccount.username,
+          email: newAccount.email,
+          password_hash: passwordHash,
+          created_at: newAccount.created_at,
+        });
+      }
+    } catch (syncError) {
+      console.error('Sync error during signup (non-critical):', syncError);
+      // Continue with local account even if sync fails
+    }
+
     return { session, error: null };
   } catch (error: any) {
     console.error('Sign up error:', error);
