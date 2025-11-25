@@ -32,21 +32,39 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="map" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol 
+              size={focused ? 30 : 28} 
+              name="map" 
+              color={color} 
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="person" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol 
+              size={focused ? 30 : 28} 
+              name="person" 
+              color={color} 
+            />
+          ),
         }}
       />
       <Tabs.Screen
         name="chatbot"
         options={{
           title: 'AI Chat',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="message" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <IconSymbol 
+              size={focused ? 30 : 28} 
+              name="message" 
+              color={color} 
+            />
+          ),
         }}
       />
     </Tabs>

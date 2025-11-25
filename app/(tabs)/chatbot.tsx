@@ -1,7 +1,10 @@
 import { generateChatbotResponse } from '@/lib/chatbot-service';
-import React, { useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
+  Easing,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -35,6 +38,36 @@ export default function ChatbotScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   const keyboardShowListener = useRef<any>(null);
   const keyboardHideListener = useRef<any>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+
+  // Fade in animation when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      fadeAnim.setValue(0);
+      slideAnim.setValue(50);
+      
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 300,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      return () => {
+        fadeAnim.setValue(0);
+        slideAnim.setValue(50);
+      };
+    }, [fadeAnim, slideAnim])
+  );
 
   useEffect(() => {
     // Scroll to bottom when keyboard appears
@@ -100,17 +133,29 @@ export default function ChatbotScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+      <Animated.View 
+        style={[
+          styles.header,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          },
+        ]}>
         <Text style={styles.headerTitle}>Asistent AI</Text>
-      </View>
+      </Animated.View>
 
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}>
-        <ScrollView
+        <Animated.ScrollView
           ref={scrollViewRef}
-          style={styles.messagesContainer}
+          style={[
+            styles.messagesContainer,
+            {
+              opacity: fadeAnim,
+            },
+          ]}
           contentContainerStyle={styles.messagesContent}
           keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => {
@@ -137,9 +182,19 @@ export default function ChatbotScreen() {
               <ActivityIndicator color="#007AFF" />
             </View>
           )}
-        </ScrollView>
+        </Animated.ScrollView>
 
-        <View style={styles.inputContainer}>
+        <Animated.View 
+          style={[
+            styles.inputContainer,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim.interpolate({
+                inputRange: [0, 50],
+                outputRange: [0, 20],
+              }) }],
+            },
+          ]}>
           <TextInput
             style={styles.input}
             placeholder="Scrie o întrebare..."
@@ -160,9 +215,9 @@ export default function ChatbotScreen() {
             onPress={handleSendMessage}
             disabled={!inputText.trim() || isLoading}>
             <Text style={styles.sendButtonText}>Trimite</Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+            </TouchableOpacity>
+          </Animated.View>
+        </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

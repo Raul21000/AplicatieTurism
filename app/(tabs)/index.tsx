@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -45,10 +45,40 @@ export default function ExploreScreen() {
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [transitionTarget, setTransitionTarget] = useState<ViewMode>('list');
   const transitionTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   useEffect(() => {
     fetchLocations();
   }, []);
+
+  // Fade in animation when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      fadeAnim.setValue(0);
+      scaleAnim.setValue(0.95);
+      
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      return () => {
+        fadeAnim.setValue(0);
+        scaleAnim.setValue(0.95);
+      };
+    }, [fadeAnim, scaleAnim])
+  );
 
   useEffect(() => {
     const pulse = Animated.loop(
@@ -198,24 +228,54 @@ export default function ExploreScreen() {
     });
   };
 
-  const renderLocationCard = ({ item }: { item: Location }) => {
+  // Location Card Component with animation
+  const LocationCard = React.memo(({ item, index, onPress }: { item: Location; index: number; onPress: (item: Location) => void }) => {
+    const cardAnim = useRef(new Animated.Value(0)).current;
+    
+    useEffect(() => {
+      Animated.timing(cardAnim, {
+        toValue: 1,
+        duration: 300,
+        delay: index * 50,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    }, [cardAnim, index]);
+
     return (
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => handleLocationPress(item)}
-        activeOpacity={0.7}>
-        <Image
-          source={{ uri: item.image_url }}
-          style={styles.cardImage}
-          contentFit="cover"
-          transition={200}
-        />
-        <View style={styles.cardContent}>
-          <Text style={styles.cardTitle}>{item.name}</Text>
-          <Text style={styles.ratingText}>⭐ {item.rating.toFixed(1)}</Text>
-        </View>
-      </TouchableOpacity>
+      <Animated.View
+        style={{
+          opacity: cardAnim,
+          transform: [
+            {
+              translateY: cardAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [20, 0],
+              }),
+            },
+          ],
+        }}>
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => onPress(item)}
+          activeOpacity={0.7}>
+          <Image
+            source={{ uri: item.image_url }}
+            style={styles.cardImage}
+            contentFit="cover"
+            transition={200}
+          />
+          <View style={styles.cardContent}>
+            <Text style={styles.cardTitle}>{item.name}</Text>
+            <Text style={styles.ratingText}>⭐ {item.rating.toFixed(1)}</Text>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
     );
+  });
+
+  const renderLocationCard = ({ item, index }: { item: Location; index: number }) => {
+    return <LocationCard item={item} index={index} onPress={handleLocationPress} />;
   };
 
   const renderMapView = () => {
@@ -402,9 +462,26 @@ export default function ExploreScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <Animated.View 
+      style={[
+        styles.container,
+        {
+          opacity: fadeAnim,
+          transform: [{ scale: scaleAnim }],
+        },
+      ]}>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
+        <Animated.View 
+          style={[
+            styles.header,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: fadeAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-20, 0],
+              }) }],
+            },
+          ]}>
           <Text style={styles.headerTitle}>Explore</Text>
           <TouchableOpacity
             style={[styles.toggleButton, isTransitioning && styles.toggleButtonDisabled]}
@@ -414,7 +491,7 @@ export default function ExploreScreen() {
               {viewMode === 'list' ? 'Hartă' : 'Listă'}
             </Text>
           </TouchableOpacity>
-        </View>
+        </Animated.View>
 
         {/* Search and Sort Bar */}
         {viewMode === 'list' && (
@@ -502,7 +579,7 @@ export default function ExploreScreen() {
           </View>
         </View>
       )}
-    </View>
+    </Animated.View>
   );
 }
 

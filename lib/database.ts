@@ -275,3 +275,138 @@ export async function isLocationSaved(accountId: string, locationId: string): Pr
     return false;
   }
 }
+
+// Save visit and review for a location
+export async function saveVisitAndReview(
+  accountId: string,
+  locationId: string,
+  locationName: string,
+  locationImageUrl: string,
+  rating: number,
+  reviewText?: string
+): Promise<{ success: boolean; error?: string; revid?: string }> {
+  try {
+    const db = await getDatabase();
+    
+    // Check if location is already visited by this user
+    const existing = await db.getFirstAsync<{ revid: string }>(
+      'SELECT revid FROM visits_and_reviews WHERE account_id = ? AND location_id = ?',
+      [accountId, locationId]
+    );
+
+    if (existing) {
+      // Update existing review
+      await db.runAsync(
+        'UPDATE visits_and_reviews SET rating = ?, review_text = ?, visited_at = datetime("now") WHERE revid = ?',
+        [rating, reviewText || null, existing.revid]
+      );
+      return { success: true, revid: existing.revid };
+    }
+
+    // Generate review ID
+    const revid = generateReviewId();
+
+    // Insert new visit and review
+    await db.runAsync(
+      `INSERT INTO visits_and_reviews 
+       (revid, account_id, location_id, rating, review_text, visited_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+      [revid, accountId, locationId, rating, reviewText || null]
+    );
+
+    // Also ensure location exists in locations table (if not already there)
+    const locationExists = await db.getFirstAsync<{ locid: string }>(
+      'SELECT locid FROM locations WHERE locid = ?',
+      [locationId]
+    );
+
+    if (!locationExists) {
+      // Extract coordinates from location data if available
+      // For now, we'll use default coordinates (can be improved later)
+      await db.runAsync(
+        `INSERT INTO locations (locid, name, description, latitude, longitude)
+         VALUES (?, ?, ?, ?, ?)`,
+        [locationId, locationName, null, 44.4268, 26.1025] // Default Bucharest coordinates
+      );
+    }
+
+    return { success: true, revid };
+  } catch (error: any) {
+    console.error('Error saving visit and review:', error);
+    return { success: false, error: error.message || 'Eroare la salvarea vizitei' };
+  }
+}
+
+// Get visited locations for a user
+export async function getVisitedLocations(accountId: string) {
+  try {
+    const db = await getDatabase();
+    return await db.getAllAsync<{
+      revid: string;
+      location_id: string;
+      location_name: string;
+      location_image_url: string | null;
+      rating: number;
+      review_text: string | null;
+      visited_at: string;
+    }>(
+      `SELECT 
+        vr.revid,
+        vr.location_id,
+        COALESCE(l.name, sl.location_name, 'Locație necunoscută') as location_name,
+        COALESCE(sl.location_image_url, '') as location_image_url,
+        vr.rating,
+        vr.review_text,
+        vr.visited_at
+       FROM visits_and_reviews vr
+       LEFT JOIN locations l ON vr.location_id = l.locid
+       LEFT JOIN saved_locations sl ON vr.location_id = sl.location_id AND vr.account_id = sl.account_id
+       WHERE vr.account_id = ?
+       ORDER BY vr.visited_at DESC`,
+      [accountId]
+    );
+  } catch (error) {
+    console.error('Error getting visited locations:', error);
+    return [];
+  }
+}
+
+// Get visit statistics for a user
+export async function getVisitStats(accountId: string): Promise<{ visited: number; reviews: number }> {
+  try {
+    const db = await getDatabase();
+    
+    const visitedResult = await db.getFirstAsync<{ count: number }>(
+      'SELECT COUNT(DISTINCT location_id) as count FROM visits_and_reviews WHERE account_id = ?',
+      [accountId]
+    );
+    
+    const reviewsResult = await db.getFirstAsync<{ count: number }>(
+      'SELECT COUNT(*) as count FROM visits_and_reviews WHERE account_id = ? AND review_text IS NOT NULL AND review_text != ""',
+      [accountId]
+    );
+    
+    return {
+      visited: visitedResult?.count || 0,
+      reviews: reviewsResult?.count || 0,
+    };
+  } catch (error) {
+    console.error('Error getting visit stats:', error);
+    return { visited: 0, reviews: 0 };
+  }
+}
+
+// Check if location is visited
+export async function isLocationVisited(accountId: string, locationId: string): Promise<boolean> {
+  try {
+    const db = await getDatabase();
+    const result = await db.getFirstAsync<{ revid: string }>(
+      'SELECT revid FROM visits_and_reviews WHERE account_id = ? AND location_id = ?',
+      [accountId, locationId]
+    );
+    return !!result;
+  } catch (error) {
+    console.error('Error checking if location is visited:', error);
+    return false;
+  }
+}

@@ -1,35 +1,74 @@
 import { getSession, signOut } from '@/lib/auth-helpers';
-import { getSavedLocations, removeSavedLocation } from '@/lib/database';
+import { getVisitedLocations, getVisitStats } from '@/lib/database';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Easing,
   FlatList,
+  Modal,
   SafeAreaView,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from 'react-native';
 
-interface SavedLocation {
-  saved_id: string;
+interface VisitedLocation {
+  revid: string;
   location_id: string;
   location_name: string;
   location_image_url: string | null;
-  location_rating: number;
-  location_description: string | null;
+  rating: number;
+  review_text: string | null;
+  visited_at: string;
 }
 
 export default function ProfileScreen() {
   const router = useRouter();
   const [username, setUsername] = useState<string>('Utilizator');
-  const [savedLocations, setSavedLocations] = useState<SavedLocation[]>([]);
+  const [visitedLocations, setVisitedLocations] = useState<VisitedLocation[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ visited: 0, reviews: 0 });
+  const [showVisitedModal, setShowVisitedModal] = useState(false);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
+  // Filter locations with reviews
+  const reviewedLocations = visitedLocations.filter(
+    (location) => location.review_text && location.review_text.trim().length > 0
+  );
+
+  // Fade in animation when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      fadeAnim.setValue(0);
+      scaleAnim.setValue(0.95);
+      
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 300,
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      return () => {
+        fadeAnim.setValue(0);
+        scaleAnim.setValue(0.95);
+      };
+    }, [fadeAnim, scaleAnim])
+  );
 
   useEffect(() => {
     loadProfileData();
@@ -44,40 +83,18 @@ export default function ProfileScreen() {
         // Get username from session
         setUsername(session.account.username || session.account.email.split('@')[0]);
         
-        // Get saved locations
-        const saved = await getSavedLocations(session.account.accid);
-        setSavedLocations(saved);
+        // Get visited locations
+        const visited = await getVisitedLocations(session.account.accid);
+        setVisitedLocations(visited);
         
         // Get statistics (visited locations and reviews count)
-        // For now, we'll use saved locations count as visited
-        setStats({
-          visited: saved.length,
-          reviews: 0, // Can be updated later if reviews are implemented
-        });
+        const visitStats = await getVisitStats(session.account.accid);
+        setStats(visitStats);
       }
     } catch (error) {
       console.error('Error loading profile data:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleRemoveLocation = async (locationId: string) => {
-    try {
-      const session = await getSession();
-      if (!session) return;
-
-      const result = await removeSavedLocation(session.account.accid, locationId);
-      if (result.success) {
-        // Reload saved locations
-        await loadProfileData();
-        Alert.alert('Succes', 'Locația a fost ștearsă');
-      } else {
-        Alert.alert('Eroare', result.error || 'Nu s-a putut șterge locația');
-      }
-    } catch (error) {
-      console.error('Error removing location:', error);
-      Alert.alert('Eroare', 'A apărut o eroare la ștergerea locației');
     }
   };
 
@@ -112,41 +129,48 @@ export default function ProfileScreen() {
     );
   };
 
-  const renderSavedLocation = ({ item }: { item: SavedLocation }) => {
+  const renderVisitedLocation = ({ item }: { item: VisitedLocation }) => {
     return (
-      <TouchableOpacity
-        style={styles.locationCard}
-        onLongPress={() => {
-          Alert.alert(
-            'Șterge locație',
-            `Ești sigur că vrei să ștergi "${item.location_name}"?`,
-            [
-              { text: 'Anulează', style: 'cancel' },
-              {
-                text: 'Șterge',
-                style: 'destructive',
-                onPress: () => handleRemoveLocation(item.location_id),
-              },
-            ]
-          );
-        }}>
+      <View style={styles.visitedLocationCardInline}>
         <Image
           source={{ uri: item.location_image_url || 'https://picsum.photos/300/200?random=1' }}
-          style={styles.locationImage}
+          style={styles.visitedLocationImageInline}
           contentFit="cover"
         />
-        <View style={styles.locationInfo}>
-          <Text style={styles.locationName}>{item.location_name}</Text>
-          <Text style={styles.locationRating}>⭐ {item.location_rating.toFixed(1)}</Text>
+        <View style={styles.visitedLocationInfoInline}>
+          <Text style={styles.visitedLocationNameInline}>{item.location_name}</Text>
+          <View style={styles.visitedLocationMetaInline}>
+            <Text style={styles.visitedLocationRatingInline}>
+              {'⭐'.repeat(item.rating)}{'☆'.repeat(5 - item.rating)} {item.rating}/5
+            </Text>
+            {item.review_text && (
+              <Text style={styles.visitedLocationReviewInline} numberOfLines={2}>
+                "{item.review_text}"
+              </Text>
+            )}
+            <Text style={styles.visitedLocationDateInline}>
+              {new Date(item.visited_at).toLocaleDateString('ro-RO', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              })}
+            </Text>
+          </View>
         </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView 
-        style={styles.scrollView}
+      <Animated.ScrollView 
+        style={[
+          styles.scrollView,
+          {
+            opacity: fadeAnim,
+            transform: [{ scale: scaleAnim }],
+          },
+        ]}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}>
         {loading ? (
@@ -168,35 +192,86 @@ export default function ProfileScreen() {
 
             {/* Statistics */}
             <View style={styles.statsContainer}>
-              <View style={styles.statItem}>
+              <TouchableOpacity 
+                style={styles.statItem}
+                onPress={() => {
+                  if (visitedLocations.length > 0) {
+                    setShowVisitedModal(true);
+                  }
+                }}>
                 <Text style={styles.statNumber}>{stats.visited}</Text>
-                <Text style={styles.statLabel}>Locații Salvate</Text>
-              </View>
+                <Text style={styles.statLabel}>Locații Vizitate</Text>
+              </TouchableOpacity>
               <View style={styles.statDivider} />
-              <View style={styles.statItem}>
+              <TouchableOpacity 
+                style={styles.statItem}
+                onPress={() => {
+                  if (reviewedLocations.length > 0) {
+                    setShowVisitedModal(true);
+                  }
+                }}>
                 <Text style={styles.statNumber}>{stats.reviews}</Text>
                 <Text style={styles.statLabel}>Recenzii</Text>
-              </View>
+              </TouchableOpacity>
             </View>
 
-            {/* Saved Locations Section */}
-            <View style={styles.savedSection}>
-              <Text style={styles.sectionTitle}>Locații Salvate</Text>
-              {savedLocations.length === 0 ? (
+            {/* Reviews Section */}
+            <View style={styles.reviewsSection}>
+              <Text style={styles.sectionTitle}>Recenzii</Text>
+              {reviewedLocations.length === 0 ? (
                 <View style={styles.emptyContainer}>
-                  <Text style={styles.emptyText}>Nu ai locații salvate încă</Text>
-                  <Text style={styles.emptySubtext}>Apasă lung pe o locație pentru a o salva</Text>
+                  <Text style={styles.emptyText}>Nu ai recenzii încă</Text>
+                  <Text style={styles.emptySubtext}>Marchează locații ca vizitate și adaugă recenzii pentru a le vedea aici</Text>
                 </View>
               ) : (
-                <FlatList
-                  data={savedLocations}
-                  renderItem={renderSavedLocation}
-                  keyExtractor={(item) => item.saved_id}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.locationsList}
-                  scrollEnabled={true}
-                />
+                <View style={styles.reviewsContainer}>
+                  {reviewedLocations.map((item) => (
+                    <View key={item.revid} style={styles.reviewCard}>
+                      <Image
+                        source={{ uri: item.location_image_url || 'https://picsum.photos/300/200?random=1' }}
+                        style={styles.reviewImage}
+                        contentFit="cover"
+                      />
+                      <View style={styles.reviewInfo}>
+                        <Text style={styles.reviewLocationName}>{item.location_name}</Text>
+                        <View style={styles.reviewMeta}>
+                          <Text style={styles.reviewRating}>
+                            {'⭐'.repeat(item.rating)}{'☆'.repeat(5 - item.rating)} {item.rating}/5
+                          </Text>
+                          <Text style={styles.reviewText}>
+                            "{item.review_text}"
+                          </Text>
+                          <Text style={styles.reviewDate}>
+                            {new Date(item.visited_at).toLocaleDateString('ro-RO', {
+                              year: 'numeric',
+                              month: 'long',
+                              day: 'numeric',
+                            })}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            {/* Visited Locations Section */}
+            <View style={styles.visitedSection}>
+              <Text style={styles.sectionTitle}>Locații Vizitate</Text>
+              {visitedLocations.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Text style={styles.emptyText}>Nu ai vizitat încă nicio locație</Text>
+                  <Text style={styles.emptySubtext}>Marchează locații ca vizitate pentru a le vedea aici</Text>
+                </View>
+              ) : (
+                <View style={styles.visitedLocationsContainer}>
+                  {visitedLocations.map((item) => (
+                    <View key={item.revid}>
+                      {renderVisitedLocation({ item })}
+                    </View>
+                  ))}
+                </View>
               )}
             </View>
           </>
@@ -206,7 +281,69 @@ export default function ProfileScreen() {
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Text style={styles.logoutButtonText}>Logout</Text>
         </TouchableOpacity>
-      </ScrollView>
+      </Animated.ScrollView>
+
+      {/* Reviews Modal */}
+      <Modal
+        visible={showVisitedModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowVisitedModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Recenzii</Text>
+              <TouchableOpacity
+                onPress={() => setShowVisitedModal(false)}
+                style={styles.modalCloseButton}>
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+            
+            {reviewedLocations.length === 0 ? (
+              <View style={styles.emptyModalContainer}>
+                <Text style={styles.emptyModalText}>Nu ai recenzii încă</Text>
+                <Text style={styles.emptyModalSubtext}>Marchează locații ca vizitate și adaugă recenzii pentru a le vedea aici</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={reviewedLocations}
+                keyExtractor={(item) => item.revid}
+                renderItem={({ item }) => (
+                  <View style={styles.visitedLocationCard}>
+                    <Image
+                      source={{ uri: item.location_image_url || 'https://picsum.photos/300/200?random=1' }}
+                      style={styles.visitedLocationImage}
+                      contentFit="cover"
+                    />
+                    <View style={styles.visitedLocationInfo}>
+                      <Text style={styles.visitedLocationName}>{item.location_name}</Text>
+                      <View style={styles.visitedLocationMeta}>
+                        <Text style={styles.visitedLocationRating}>
+                          {'⭐'.repeat(item.rating)}{'☆'.repeat(5 - item.rating)} {item.rating}/5
+                        </Text>
+                        {item.review_text && (
+                          <Text style={styles.visitedLocationReview} numberOfLines={2}>
+                            {item.review_text}
+                          </Text>
+                        )}
+                        <Text style={styles.visitedLocationDate}>
+                          {new Date(item.visited_at).toLocaleDateString('ro-RO', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric',
+                          })}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+                contentContainerStyle={styles.visitedLocationsList}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -279,10 +416,6 @@ const styles = StyleSheet.create({
     height: 40,
     backgroundColor: '#3a3a3a',
   },
-  savedSection: {
-    marginBottom: 20,
-    minHeight: 200,
-  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -290,12 +423,14 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     paddingLeft: 5,
   },
-  locationsList: {
-    paddingRight: 20,
+  reviewsSection: {
+    marginBottom: 20,
   },
-  locationCard: {
-    width: 200,
-    marginRight: 15,
+  reviewsContainer: {
+    gap: 16,
+  },
+  reviewCard: {
+    flexDirection: 'row',
     backgroundColor: '#2a2a2a',
     borderRadius: 12,
     overflow: 'hidden',
@@ -308,23 +443,40 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 5,
   },
-  locationImage: {
-    width: '100%',
-    height: 120,
+  reviewImage: {
+    width: 100,
+    height: 100,
   },
-  locationInfo: {
+  reviewInfo: {
+    flex: 1,
     padding: 12,
+    justifyContent: 'space-between',
   },
-  locationName: {
+  reviewLocationName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#ffffff',
-    marginBottom: 5,
+    color: '#FFFFFF',
+    marginBottom: 8,
   },
-  locationRating: {
+  reviewMeta: {
+    gap: 6,
+  },
+  reviewRating: {
     fontSize: 14,
     color: '#007AFF',
     fontWeight: '500',
+  },
+  reviewText: {
+    fontSize: 14,
+    color: '#d0d0d0',
+    fontStyle: 'italic',
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  reviewDate: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 6,
   },
   logoutButton: {
     backgroundColor: '#FF3B30',
@@ -368,6 +520,166 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   emptySubtext: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+  },
+  visitedSection: {
+    marginBottom: 20,
+  },
+  visitedLocationsContainer: {
+    gap: 12,
+  },
+  visitedLocationCardInline: {
+    flexDirection: 'row',
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  visitedLocationImageInline: {
+    width: 120,
+    height: 120,
+  },
+  visitedLocationInfoInline: {
+    flex: 1,
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  visitedLocationNameInline: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  visitedLocationMetaInline: {
+    gap: 6,
+  },
+  visitedLocationRatingInline: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  visitedLocationReviewInline: {
+    fontSize: 13,
+    color: '#b0b0b0',
+    fontStyle: 'italic',
+    marginTop: 4,
+    lineHeight: 18,
+  },
+  visitedLocationDateInline: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingTop: 20,
+    paddingBottom: 30,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#2a2a2a',
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#2a2a2a',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  visitedLocationsList: {
+    padding: 20,
+  },
+  visitedLocationCard: {
+    flexDirection: 'row',
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    marginBottom: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  visitedLocationImage: {
+    width: 100,
+    height: 100,
+  },
+  visitedLocationInfo: {
+    flex: 1,
+    padding: 12,
+    justifyContent: 'space-between',
+  },
+  visitedLocationName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  visitedLocationMeta: {
+    gap: 4,
+  },
+  visitedLocationRating: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: '500',
+  },
+  visitedLocationReview: {
+    fontSize: 13,
+    color: '#b0b0b0',
+    marginTop: 4,
+  },
+  visitedLocationDate: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 4,
+  },
+  emptyModalContainer: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyModalText: {
+    fontSize: 16,
+    color: '#b0b0b0',
+    marginBottom: 8,
+  },
+  emptyModalSubtext: {
     fontSize: 14,
     color: '#666',
     textAlign: 'center',
