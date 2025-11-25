@@ -3,7 +3,11 @@
 
 import { getFormattedAppContext, getLocationRecommendationContext } from './app-context';
 
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyDabDp_Y5nHNImaZNII1f_NhVQrD_iAkcE'; // Setează EXPO_PUBLIC_GEMINI_API_KEY în .env
+// IMPORTANT:
+//  - NU mai folosim niciun API key hardcodat în cod (Google îl poate marca drept "leaked").
+//  - Cheia este luată DOAR din .env: EXPO_PUBLIC_GEMINI_API_KEY
+//  - Dacă nu există sau e prea scurtă, folosim fallback local (fără request la API).
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
 // Use gemini-2.5-flash (fastest) or gemini-2.5-pro (better quality)
 const GEMINI_MODEL = 'gemini-2.5-flash'; // Fast and efficient
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -17,7 +21,7 @@ export async function generateBaseDescription(
   originalDescription?: string
 ): Promise<string> {
   // Check if API key is configured
-  if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY' || GEMINI_API_KEY.length < 20) {
+  if (!GEMINI_API_KEY || GEMINI_API_KEY.length < 20) {
     console.error('GEMINI_API_KEY not configured properly');
     // Return fallback base description (shorter - 2 sentences)
     return `${locationName} este o destinație turistică remarcabilă situată în inima României. Această locație oferă o experiență autentică care combină perfect istoria, cultura și frumusețea naturală a țării.`;
@@ -229,8 +233,8 @@ export async function generateVibeDescription(
   locationName: string,
   originalDescription: string
 ): Promise<string> {
-    // Check if API key is configured (only check for placeholder, not actual key)
-    if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY' || GEMINI_API_KEY.length < 20) {
+    // Check if API key is configured
+    if (!GEMINI_API_KEY || GEMINI_API_KEY.length < 20) {
       console.error('GEMINI_API_KEY not configured properly');
       // Return enhanced description without AI
       return `✨ ${locationName} - ${originalDescription} Un loc perfect pentru a te relaxa și a te bucura de momente speciale. Atmosfera este primitoare și vibe-ul este exact ce ai nevoie pentru o experiență memorabilă!`;
@@ -378,11 +382,15 @@ export async function generateDetailedDescription(
   baseDescription: string
 ): Promise<string> {
   // Check if API key is configured
-  if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY' || GEMINI_API_KEY.length < 20) {
-    console.error('GEMINI_API_KEY not configured properly');
+  if (!GEMINI_API_KEY || GEMINI_API_KEY.length < 20) {
+    console.error('[AI] GEMINI_API_KEY not configured properly - using fallback');
+    console.error(`[AI] Key exists: ${!!GEMINI_API_KEY}, Length: ${GEMINI_API_KEY?.length || 0}`);
     // Return unique fallback based on name + existing description
     return buildFallbackDetailedDescription(locationName, baseDescription);
   }
+
+  console.log(`[AI] Generating detailed description for: ${locationName}`);
+  console.log(`[AI] Using API key: ${GEMINI_API_KEY.substring(0, 10)}...${GEMINI_API_KEY.substring(GEMINI_API_KEY.length - 5)}`);
 
   try {
     // Get app context for better descriptions
@@ -466,18 +474,29 @@ RĂSPUNDE DOAR CU ACESTE 3-4 FRAZE NOI (fără descrierea de bază).`;
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('API error response:', response.status, errorData);
+      console.error('[AI] ❌ API error response:', response.status, errorData);
       
-      if (response.status === 400) {
-        throw new Error(`API key invalid sau cerere incorectă: ${errorData.error?.message || 'Bad Request'}`);
-      } else if (response.status === 403) {
-        throw new Error(`API key invalid sau fără permisiuni: ${errorData.error?.message || 'Forbidden'}`);
+      if (response.status === 403) {
+        const errorMsg = errorData.error?.message || 'Forbidden';
+        console.error('[AI] 🚨 API KEY LEAKED OR INVALID!');
+        console.error('[AI] Solution: Create NEW API key at https://aistudio.google.com');
+        console.error('[AI] Then update EXPO_PUBLIC_GEMINI_API_KEY in .env file');
+        console.error('[AI] Using fallback description instead...');
+        // Don't throw - use fallback instead
+        return buildFallbackDetailedDescription(locationName, baseDescription);
+      } else if (response.status === 400) {
+        console.error('[AI] Bad request - check API key format');
+        return buildFallbackDetailedDescription(locationName, baseDescription);
       } else if (response.status === 404) {
-        throw new Error(`Endpoint not found (404). Verifică că API key-ul este valid.`);
+        console.error('[AI] Endpoint not found - check model name');
+        return buildFallbackDetailedDescription(locationName, baseDescription);
       } else if (response.status === 429) {
-        throw new Error('Prea multe cereri. Te rog așteaptă puțin.');
+        console.error('[AI] Too many requests - using fallback');
+        return buildFallbackDetailedDescription(locationName, baseDescription);
       }
-      throw new Error(`API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+      // For any other error, use fallback
+      console.error('[AI] Unknown API error - using fallback');
+      return buildFallbackDetailedDescription(locationName, baseDescription);
     }
 
     const data = await response.json();

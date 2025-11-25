@@ -32,7 +32,7 @@ Chatbot-ul returnează "Nu pot răspunde acum" pentru că API key-ul Gemini nu e
 2. Instalează `expo-constants` (deja instalat) și folosește:
    ```typescript
    import Constants from 'expo-constants';
-   const GEMINI_API_KEY = Constants.expoConfig?.extra?.geminiApiKey || 'YOUR_GEMINI_API_KEY';
+   const GEMINI_API_KEY = Constants.expoConfig?.extra?.geminiApiKey || process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'YOUR_API_KEY_HERE';
    ```
 
 3. Actualizează `app.json`:

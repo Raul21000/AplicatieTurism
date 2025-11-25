@@ -1,6 +1,6 @@
 import { generateDetailedDescription } from '@/lib/ai-service';
 import { getSession } from '@/lib/auth-helpers';
-import { isLocationSaved, removeSavedLocation, saveLocation } from '@/lib/database';
+import { saveVisitAndReview, isLocationVisited } from '@/lib/database';
 import { getStaticDescriptionForLocation } from '@/lib/location-static-descriptions';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -8,11 +8,12 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Linking,
+  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -24,9 +25,11 @@ export default function DetailsScreen() {
   const [extraDescription, setExtraDescription] = useState<string | null>(null);
   const [isGeneratingExtra, setIsGeneratingExtra] = useState(false);
   const [hasGeneratedExtra, setHasGeneratedExtra] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [checkingSaved, setCheckingSaved] = useState(true);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [rating, setRating] = useState<number>(5);
+  const [reviewText, setReviewText] = useState<string>('');
+  const [isSavingVisit, setIsSavingVisit] = useState(false);
+  const [isVisited, setIsVisited] = useState(false);
 
   // Parse location data from params
   const location = params.location ? JSON.parse(params.location as string) : null;
@@ -39,30 +42,21 @@ export default function DetailsScreen() {
       : `Experiența la ${location?.name ?? 'această locație'} merită descoperită. Creează o descriere creativă care să redea vibe-ul locului chiar dacă nu avem detalii inițiale.`;
 
   useEffect(() => {
-    checkIfSaved();
+    checkIfVisited();
   }, [location]);
 
-  const checkIfSaved = async () => {
-    if (!location) {
-      setCheckingSaved(false);
-      return;
-    }
-
+  const checkIfVisited = async () => {
+    if (!location) return;
     try {
       const session = await getSession();
-      if (!session) {
-        setCheckingSaved(false);
-        return;
-      }
-
-      const saved = await isLocationSaved(session.account.accid, location.id);
-      setIsSaved(saved);
+      if (!session) return;
+      const visited = await isLocationVisited(session.account.accid, location.id);
+      setIsVisited(visited);
     } catch (error) {
-      console.error('Error checking if location is saved:', error);
-    } finally {
-      setCheckingSaved(false);
+      console.error('Error checking if location is visited:', error);
     }
   };
+
 
   if (!location) {
     return (
@@ -76,14 +70,6 @@ export default function DetailsScreen() {
       </SafeAreaView>
     );
   }
-
-  const handleWhatsAppReservation = () => {
-    const message = `Bună! Aș dori să rezerv pentru: ${location.name}`;
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    Linking.openURL(whatsappUrl).catch((err) => {
-      console.error('Error opening WhatsApp:', err);
-    });
-  };
 
   const handleGenerateExtraDescription = async () => {
     if (!location) return;
@@ -105,50 +91,46 @@ export default function DetailsScreen() {
     }
   };
 
-  const handleSaveLocation = async () => {
+  const handleMarkAsVisited = () => {
+    setShowReviewModal(true);
+  };
+
+  const handleSaveReview = async () => {
     if (!location) return;
 
     try {
-      setIsSaving(true);
+      setIsSavingVisit(true);
       const session = await getSession();
       
       if (!session) {
-        Alert.alert('Eroare', 'Trebuie să fii autentificat pentru a salva locații');
+        Alert.alert('Eroare', 'Trebuie să fii autentificat pentru a marca locația ca vizitată');
+        setShowReviewModal(false);
         return;
       }
 
-      if (isSaved) {
-        // Remove saved location
-        const result = await removeSavedLocation(session.account.accid, location.id);
-        if (result.success) {
-          setIsSaved(false);
-          Alert.alert('Succes', 'Locația a fost ștearsă din lista ta');
-        } else {
-          Alert.alert('Eroare', result.error || 'Nu s-a putut șterge locația');
-        }
-      } else {
-        // Save location
-        const result = await saveLocation(
-          session.account.accid,
-          location.id,
-          location.name,
-          location.image_url,
-          location.rating,
-          location.description
-        );
+      const result = await saveVisitAndReview(
+        session.account.accid,
+        location.id,
+        location.name,
+        location.image_url,
+        rating,
+        reviewText.trim() || undefined
+      );
 
-        if (result.success) {
-          setIsSaved(true);
-          Alert.alert('Succes', 'Locația a fost salvată!');
-        } else {
-          Alert.alert('Eroare', result.error || 'Nu s-a putut salva locația');
-        }
+      if (result.success) {
+        setIsVisited(true);
+        setShowReviewModal(false);
+        setReviewText('');
+        setRating(5);
+        Alert.alert('Succes', 'Locația a fost marcată ca vizitată!');
+      } else {
+        Alert.alert('Eroare', result.error || 'Nu s-a putut salva vizita');
       }
     } catch (error: any) {
-      console.error('Error saving/removing location:', error);
+      console.error('Error saving visit:', error);
       Alert.alert('Eroare', 'A apărut o eroare. Te rog încearcă din nou.');
     } finally {
-      setIsSaving(false);
+      setIsSavingVisit(false);
     }
   };
 
@@ -203,37 +185,87 @@ export default function DetailsScreen() {
               <Text style={styles.extraDescription}>{extraDescription}</Text>
             </View>
           )}
+
+          {/* Mark as Visited Button */}
+          <TouchableOpacity
+            style={[styles.visitedButton, isVisited && styles.visitedButtonActive]}
+            onPress={handleMarkAsVisited}
+            disabled={isSavingVisit}>
+            {isVisited ? (
+              <Text style={styles.visitedButtonText}>✓ Marcat ca Vizitat</Text>
+            ) : (
+              <Text style={styles.visitedButtonText}>📍 Marchează ca Vizitat</Text>
+            )}
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
-      {/* Action Buttons */}
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity
-          style={styles.whatsappButton}
-          onPress={handleWhatsAppReservation}>
-          <Text style={styles.whatsappButtonText}>Rezervă pe WhatsApp</Text>
-        </TouchableOpacity>
+      {/* Review Modal */}
+      <Modal
+        visible={showReviewModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowReviewModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Adaugă o recenzie</Text>
+            
+            {/* Rating Selection */}
+            <View style={styles.ratingContainer}>
+              <Text style={styles.ratingLabel}>Rating:</Text>
+              <View style={styles.starsContainer}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <TouchableOpacity
+                    key={star}
+                    onPress={() => setRating(star)}
+                    style={styles.starButton}>
+                    <Text style={[styles.star, star <= rating && styles.starActive]}>
+                      ⭐
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.ratingValue}>{rating}/5</Text>
+            </View>
 
-        <TouchableOpacity
-          style={[styles.saveButton, isSaved && styles.saveButtonActive, isSaving && styles.buttonDisabled]}
-          onPress={handleSaveLocation}
-          disabled={isSaving || checkingSaved}>
-          {isSaving ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator color="#fff" size="small" />
-              <Text style={styles.saveButtonText}>Se procesează...</Text>
+            {/* Review Text Input */}
+            <Text style={styles.reviewLabel}>Recenzie (opțional):</Text>
+            <TextInput
+              style={styles.reviewInput}
+              placeholder="Scrie recenzia ta aici..."
+              placeholderTextColor="#777"
+              multiline
+              numberOfLines={4}
+              value={reviewText}
+              onChangeText={setReviewText}
+              textAlignVertical="top"
+            />
+
+            {/* Modal Buttons */}
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel]}
+                onPress={() => {
+                  setShowReviewModal(false);
+                  setReviewText('');
+                  setRating(5);
+                }}>
+                <Text style={styles.modalButtonCancelText}>Anulează</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSave, isSavingVisit && styles.buttonDisabled]}
+                onPress={handleSaveReview}
+                disabled={isSavingVisit}>
+                {isSavingVisit ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.modalButtonSaveText}>Salvează</Text>
+                )}
+              </TouchableOpacity>
             </View>
-          ) : checkingSaved ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator color="#fff" size="small" />
-            </View>
-          ) : (
-            <Text style={styles.saveButtonText}>
-              {isSaved ? '✓ Locație Salvată' : '💾 Salvează Locația'}
-            </Text>
-          )}
-        </TouchableOpacity>
-      </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -481,6 +513,127 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  visitedButton: {
+    backgroundColor: '#34C759',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 24,
+    shadowColor: '#34C759',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  visitedButtonActive: {
+    backgroundColor: '#5856D6',
+    shadowColor: '#5856D6',
+  },
+  visitedButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 20,
+    padding: 24,
+    width: '90%',
+    maxWidth: 400,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  ratingContainer: {
+    marginBottom: 20,
+    alignItems: 'center',
+  },
+  ratingLabel: {
+    fontSize: 16,
+    color: '#b0b0b0',
+    marginBottom: 12,
+  },
+  starsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  starButton: {
+    padding: 4,
+  },
+  star: {
+    fontSize: 32,
+    opacity: 0.3,
+  },
+  starActive: {
+    opacity: 1,
+  },
+  ratingValue: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#007AFF',
+    marginTop: 4,
+  },
+  reviewLabel: {
+    fontSize: 16,
+    color: '#b0b0b0',
+    marginBottom: 8,
+  },
+  reviewInput: {
+    backgroundColor: '#2a2a2a',
+    borderRadius: 12,
+    padding: 16,
+    color: '#FFFFFF',
+    fontSize: 16,
+    minHeight: 120,
+    borderWidth: 1,
+    borderColor: '#3a3a3a',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonCancel: {
+    backgroundColor: '#3a3a3a',
+  },
+  modalButtonSave: {
+    backgroundColor: '#007AFF',
+  },
+  modalButtonCancelText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  modalButtonSaveText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
