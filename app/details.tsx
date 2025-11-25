@@ -1,6 +1,7 @@
 import { getSession } from '@/lib/auth-helpers';
 import { isLocationSaved, removeSavedLocation, saveLocation } from '@/lib/database';
 import { getStaticDescriptionForLocation } from '@/lib/location-static-descriptions';
+import { generateDetailedDescription } from '@/lib/ai-service';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -19,6 +20,10 @@ import {
 export default function DetailsScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
+
+  const [extraDescription, setExtraDescription] = useState<string | null>(null);
+  const [isGeneratingExtra, setIsGeneratingExtra] = useState(false);
+  const [hasGeneratedExtra, setHasGeneratedExtra] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [checkingSaved, setCheckingSaved] = useState(true);
@@ -72,6 +77,26 @@ export default function DetailsScreen() {
     Linking.openURL(whatsappUrl).catch((err) => {
       console.error('Error opening WhatsApp:', err);
     });
+  };
+
+  const handleGenerateExtraDescription = async () => {
+    if (!location || !staticDescription) return;
+
+    try {
+      setIsGeneratingExtra(true);
+
+      const detailed = await generateDetailedDescription(location.name, staticDescription);
+      setExtraDescription(detailed);
+      setHasGeneratedExtra(true); // hide button after generation
+    } catch (error: any) {
+      console.error('Error generating extra description:', error);
+      Alert.alert(
+        'Eroare',
+        'Nu am putut genera descrierea suplimentară. Verifică conexiunea la internet sau API key-ul.'
+      );
+    } finally {
+      setIsGeneratingExtra(false);
+    }
   };
 
   const handleSaveLocation = async () => {
@@ -142,6 +167,31 @@ export default function DetailsScreen() {
           {staticDescription && (
             <View style={styles.descriptionContainer}>
               <Text style={styles.description}>{staticDescription}</Text>
+
+              {/* Button to generate extra, more in-depth description with AI */}
+              {!hasGeneratedExtra && !extraDescription && (
+                <TouchableOpacity
+                  style={[styles.extraButton, isGeneratingExtra && styles.buttonDisabled]}
+                  onPress={handleGenerateExtraDescription}
+                  disabled={isGeneratingExtra}
+                >
+                  {isGeneratingExtra ? (
+                    <View style={styles.loadingContainer}>
+                      <ActivityIndicator color="#fff" size="small" />
+                      <Text style={styles.extraButtonText}>Se generează descrierea...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.extraButtonText}>Extinde descrierea cu AI</Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
+          {/* Extra AI-generated description (shown only after button is used) */}
+          {extraDescription && (
+            <View style={styles.extraDescriptionContainer}>
+              <Text style={styles.extraDescription}>{extraDescription}</Text>
             </View>
           )}
         </View>
@@ -217,6 +267,28 @@ const styles = StyleSheet.create({
     color: '#b0b0b0',
     lineHeight: 26,
     marginBottom: 16,
+  },
+  extraButton: {
+    backgroundColor: '#007AFF',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  extraButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  extraDescriptionContainer: {
+    marginTop: 8,
+    marginBottom: 24,
+  },
+  extraDescription: {
+    fontSize: 15,
+    color: '#d0d0d0',
+    lineHeight: 24,
   },
   loadingText: {
     fontSize: 14,
