@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import MapView, { Marker, Region } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, Region } from 'react-native-maps';
 
 interface Location {
   id: string;
@@ -29,9 +29,16 @@ interface Location {
 
 type ViewMode = 'list' | 'map';
 
+const ROMANIA_REGION: Region = {
+  latitude: 45.9432,
+  longitude: 24.9668,
+  latitudeDelta: 4.0,
+  longitudeDelta: 4.0,
+};
+
 export default function ExploreScreen() {
   const router = useRouter();
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<MapView | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [locations, setLocations] = useState<Location[]>([]);
   const [filteredLocations, setFilteredLocations] = useState<Location[]>([]);
@@ -81,6 +88,7 @@ export default function ExploreScreen() {
       }
     };
   }, []);
+
 
   const fetchLocations = async () => {
     try {
@@ -164,6 +172,19 @@ export default function ExploreScreen() {
     });
   };
 
+  const focusMapOnLocation = (location: Location) => {
+    if (!mapRef.current) {
+      return;
+    }
+    const region: Region = {
+      latitude: location.coordinates.lat,
+      longitude: location.coordinates.long,
+      latitudeDelta: 0.5,
+      longitudeDelta: 0.5,
+    };
+    mapRef.current.animateToRegion(region, 600);
+  };
+
   const handleMarkerPress = (location: Location) => {
     // Set selected location
     setSelectedLocation(location);
@@ -176,15 +197,7 @@ export default function ExploreScreen() {
       friction: 8,
     }).start();
 
-    // Zoom in on the location
-    const region: Region = {
-      latitude: location.coordinates.lat,
-      longitude: location.coordinates.long,
-      latitudeDelta: 0.01,
-      longitudeDelta: 0.01,
-    };
-
-    mapRef.current?.animateToRegion(region, 500);
+    focusMapOnLocation(location);
   };
 
   const handleClosePanel = () => {
@@ -219,38 +232,16 @@ export default function ExploreScreen() {
   };
 
   const renderMapView = () => {
-    if (filteredLocations.length === 0) {
-      return (
-        <View style={styles.centerContainer}>
-          <Text style={styles.loadingText}>No locations to display on map</Text>
-        </View>
-      );
-    }
-
-    // Calculate initial region from filtered locations using coordinates.lat and coordinates.long
-    const latitudes = filteredLocations.map(loc => loc.coordinates.lat);
-    const longitudes = filteredLocations.map(loc => loc.coordinates.long);
-    const minLat = Math.min(...latitudes);
-    const maxLat = Math.max(...latitudes);
-    const minLng = Math.min(...longitudes);
-    const maxLng = Math.max(...longitudes);
-
-    const initialRegion = {
-      latitude: (minLat + maxLat) / 2,
-      longitude: (minLng + maxLng) / 2,
-      latitudeDelta: Math.max((maxLat - minLat) * 1.5, 0.1),
-      longitudeDelta: Math.max((maxLng - minLng) * 1.5, 0.1),
-    };
-
     return (
       <View style={styles.mapContainer}>
         <MapView
           ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          liteMode
           style={styles.map}
-          initialRegion={initialRegion}
-          showsUserLocation={true}
-          showsMyLocationButton={true}>
-          {filteredLocations.map((location) => (
+          initialRegion={ROMANIA_REGION}
+        >
+          {locations.map((location) => (
             <Marker
               key={location.id}
               coordinate={{
@@ -258,11 +249,17 @@ export default function ExploreScreen() {
                 longitude: location.coordinates.long,
               }}
               title={location.name}
-              description={`Rating: ${location.rating.toFixed(1)} ⭐`}
+              description={`⭐ ${location.rating.toFixed(1)}`}
               onPress={() => handleMarkerPress(location)}
             />
           ))}
         </MapView>
+
+        {locations.length === 0 && (
+          <View style={styles.mapEmptyState} pointerEvents="none">
+            <Text style={styles.loadingText}>No locations to display on map</Text>
+          </View>
+        )}
 
         {/* Side Panel for Selected Location */}
         {selectedLocation && (
@@ -784,6 +781,16 @@ const styles = StyleSheet.create({
   map: {
     flex: 1,
   },
+  mapEmptyState: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(10, 10, 10, 0.65)',
+  },
   sidePanel: {
     position: 'absolute',
     right: 0,
@@ -938,3 +945,4 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
