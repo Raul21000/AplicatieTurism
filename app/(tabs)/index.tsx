@@ -61,6 +61,8 @@ export default function ExploreScreen() {
       
       const data = await response.json();
       const locationsArray = Array.isArray(data) ? data : [];
+
+      // Use locations as-is (no AI/generated descriptions)
       setLocations(locationsArray);
       setFilteredLocations(locationsArray);
     } catch (err) {
@@ -83,13 +85,11 @@ export default function ExploreScreen() {
   useEffect(() => {
     let filtered = [...locations];
 
-    // Search filter
+    // Search filter (only by name, no descriptions)
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(
-        (loc) =>
-          loc.name.toLowerCase().includes(query) ||
-          loc.description?.toLowerCase().includes(query)
+      filtered = filtered.filter((loc) =>
+        loc.name.toLowerCase().includes(query)
       );
     }
 
@@ -163,11 +163,6 @@ export default function ExploreScreen() {
         <View style={styles.cardContent}>
           <Text style={styles.cardTitle}>{item.name}</Text>
           <Text style={styles.ratingText}>⭐ {item.rating.toFixed(1)}</Text>
-          {item.description && (
-            <Text style={styles.cardDescription} numberOfLines={2}>
-              {item.description}
-            </Text>
-          )}
         </View>
       </TouchableOpacity>
     );

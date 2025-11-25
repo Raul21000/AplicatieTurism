@@ -2,6 +2,7 @@
 // Folosește Multi-AI Service pentru răspunsuri despre locații turistice
 // Suportă multiple API-uri AI pentru performanță și redundanță îmbunătățită
 
+import { getFormattedAppContext, getLocationRecommendationContext } from './app-context';
 import { generateAIResponse, getAIProviderStats } from './multi-ai-service';
 
 // Strategy options: 'fallback' | 'parallel' | 'load-balance'
@@ -18,17 +19,27 @@ export async function generateChatbotResponse(userMessage: string): Promise<stri
       return 'Scuze, serviciul AI nu este configurat. Te rog contactează administratorul aplicației.';
     }
 
-    const prompt = `Ești un asistent AI prietenos și expert în turism pentru o aplicație mobilă de turism din România. 
-    
-Utilizatorul te întreabă: "${userMessage}"
+    // Get app context (locations, features, etc.)
+    const appContext = await getFormattedAppContext();
+    const locationContext = await getLocationRecommendationContext();
 
-Răspunde într-un mod:
+    const prompt = `Ești un asistent AI prietenos și expert în turism pentru o aplicație mobilă de turism din România.
+
+${appContext}
+
+${locationContext}
+
+ÎNTREBAREA UTILIZATORULUI: "${userMessage}"
+
+INSTRUCȚIUNI PENTRU RĂSPUNS:
 - Prietenos și conversațional (folosește "tu")
 - Util și informativ
 - Scurt și la obiect (maxim 3-4 propoziții)
 - În română
-- Dacă întreabă despre locații, recomandări sau turism, oferă răspunsuri practice
+- Dacă întreabă despre locații, recomandă locații REALE din aplicație (folosește lista de locații disponibile)
+- Dacă întreabă despre funcționalități, menționează funcționalitățile disponibile în aplicație
 - Dacă nu știi răspunsul, sugerează să exploreze aplicația pentru a găsi locații
+- Poți recomanda locații specifice din lista disponibilă când e relevant
 
 Răspunde DOAR cu răspunsul tău, fără explicații suplimentare.`;
 

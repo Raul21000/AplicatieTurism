@@ -1,6 +1,6 @@
-import { generateVibeDescription, generateDetailedDescription, generateBaseDescription } from '@/lib/ai-service';
 import { getSession } from '@/lib/auth-helpers';
 import { isLocationSaved, removeSavedLocation, saveLocation } from '@/lib/database';
+import { getStaticDescriptionForLocation } from '@/lib/location-static-descriptions';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -19,48 +19,17 @@ import {
 export default function DetailsScreen() {
   const params = useLocalSearchParams();
   const router = useRouter();
-  const [baseDescription, setBaseDescription] = useState<string | null>(null);
-  const [description, setDescription] = useState<string | null>(null);
-  const [detailedDescription, setDetailedDescription] = useState<string | null>(null);
-  const [isGeneratingBase, setIsGeneratingBase] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [isGeneratingDetailed, setIsGeneratingDetailed] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [checkingSaved, setCheckingSaved] = useState(true);
 
   // Parse location data from params
   const location = params.location ? JSON.parse(params.location as string) : null;
-  
-  // Initialize description with original
-  const originalDescription = location?.description || '';
+  const staticDescription = location ? getStaticDescriptionForLocation(location.name) : null;
 
   useEffect(() => {
     checkIfSaved();
-    // Generate base description automatically when location loads
-    if (location && !baseDescription) {
-      generateBaseDescriptionForLocation();
-    }
   }, [location]);
-
-  const generateBaseDescriptionForLocation = async () => {
-    if (!location) return;
-
-    try {
-      setIsGeneratingBase(true);
-      const generatedBase = await generateBaseDescription(
-        location.name,
-        originalDescription
-      );
-      setBaseDescription(generatedBase);
-    } catch (error: any) {
-      console.error('Error generating base description:', error);
-      // Fallback to original description if generation fails
-      setBaseDescription(originalDescription || `${location.name} este o destinație turistică remarcabilă din România.`);
-    } finally {
-      setIsGeneratingBase(false);
-    }
-  };
 
   const checkIfSaved = async () => {
     if (!location) {
@@ -103,49 +72,6 @@ export default function DetailsScreen() {
     Linking.openURL(whatsappUrl).catch((err) => {
       console.error('Error opening WhatsApp:', err);
     });
-  };
-
-  const handleGenerateVibe = async () => {
-    if (!location) return;
-
-    try {
-      setIsGenerating(true);
-      const generatedDescription = await generateVibeDescription(
-        location.name,
-        originalDescription
-      );
-      setDescription(generatedDescription);
-    } catch (error: any) {
-      console.error('Error generating vibe:', error);
-      Alert.alert(
-        'Eroare',
-        'Nu am putut genera descrierea. Verifică conexiunea la internet sau API key-ul.'
-      );
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleGenerateDetailed = async () => {
-    if (!location || !baseDescription) return;
-
-    try {
-      setIsGeneratingDetailed(true);
-      // Use base description as context to extend
-      const generatedDetailed = await generateDetailedDescription(
-        location.name,
-        baseDescription
-      );
-      setDetailedDescription(generatedDetailed);
-    } catch (error: any) {
-      console.error('Error generating detailed description:', error);
-      Alert.alert(
-        'Eroare',
-        'Nu am putut genera descrierea detaliată. Verifică conexiunea la internet sau API key-ul.'
-      );
-    } finally {
-      setIsGeneratingDetailed(false);
-    }
   };
 
   const handleSaveLocation = async () => {
@@ -212,51 +138,10 @@ export default function DetailsScreen() {
           <Text style={styles.title}>{location.name}</Text>
           <Text style={styles.rating}>⭐ {location.rating.toFixed(1)}</Text>
 
-          {/* Base Description (always shown, generated automatically) */}
-          {isGeneratingBase ? (
+          {/* Static description for this location, if configured */}
+          {staticDescription && (
             <View style={styles.descriptionContainer}>
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator color="#007AFF" size="small" />
-                <Text style={styles.loadingText}>Generând descriere de bază...</Text>
-              </View>
-            </View>
-          ) : baseDescription ? (
-            <View style={styles.descriptionContainer}>
-              <Text style={styles.description}>{baseDescription}</Text>
-              
-              {/* Button to generate detailed description */}
-              <TouchableOpacity
-                style={[styles.detailedButton, isGeneratingDetailed && styles.buttonDisabled]}
-                onPress={handleGenerateDetailed}
-                disabled={isGeneratingDetailed || !baseDescription}>
-                {isGeneratingDetailed ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator color="#007AFF" size="small" />
-                    <Text style={styles.detailedButtonText}>Extindând descrierea...</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.detailedButtonText}>
-                    📖 Extinde cu descriere detaliată AI
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          ) : null}
-
-          {/* Detailed Description (shown when generated) */}
-          {detailedDescription && (
-            <View style={styles.detailedContainer}>
-              <Text style={styles.detailedTitle}>Descriere detaliată</Text>
-              <Text style={styles.detailedText}>{detailedDescription}</Text>
-              <Text style={styles.generatedLabel}>✨ Generată cu AI</Text>
-            </View>
-          )}
-
-          {/* Vibe Description (if generated) */}
-          {description && description !== casualDescription && (
-            <View style={styles.vibeContainer}>
-              <Text style={styles.vibeTitle}>✨ Descriere creativă</Text>
-              <Text style={styles.description}>{description}</Text>
+              <Text style={styles.description}>{staticDescription}</Text>
             </View>
           )}
         </View>
@@ -287,20 +172,6 @@ export default function DetailsScreen() {
             <Text style={styles.saveButtonText}>
               {isSaved ? '✓ Locație Salvată' : '💾 Salvează Locația'}
             </Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.vibeButton, isGenerating && styles.buttonDisabled]}
-          onPress={handleGenerateVibe}
-          disabled={isGenerating}>
-          {isGenerating ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator color="#fff" size="small" />
-              <Text style={styles.vibeButtonText}>Generând...</Text>
-            </View>
-          ) : (
-            <Text style={styles.vibeButtonText}>✨ Generează Vibe AI</Text>
           )}
         </TouchableOpacity>
       </View>

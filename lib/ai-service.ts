@@ -1,6 +1,8 @@
 // AI Service pentru generarea descrierilor cu vibe
 // Folosește Google Gemini API (gratuit pentru studenți)
 
+import { getFormattedAppContext, getLocationRecommendationContext } from './app-context';
+
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyDabDp_Y5nHNImaZNII1f_NhVQrD_iAkcE'; // Setează EXPO_PUBLIC_GEMINI_API_KEY în .env
 // Use gemini-2.5-flash (fastest) or gemini-2.5-pro (better quality)
 const GEMINI_MODEL = 'gemini-2.5-flash'; // Fast and efficient
@@ -22,24 +24,43 @@ export async function generateBaseDescription(
   }
 
   try {
+    // Get app context for better descriptions
+    const appContext = await getFormattedAppContext();
+    
     // Analyze location name to create themed prompt
     const locationTheme = analyzeLocationTheme(locationName);
     
-    const prompt = `Creează o descriere de bază (2-3 propoziții) pentru locația turistică "${locationName}" din România.
+    // Create unique identifier based on location name to ensure uniqueness
+    const locationHash = locationName.toLowerCase().replace(/\s+/g, '_');
+    const uniqueElements = extractUniqueElements(locationName);
+    
+    const prompt = `Creează o descriere de bază UNICĂ și SPECIFICĂ (2-3 propoziții) pentru locația turistică "${locationName}" din România.
+
+CONTEXT APLICAȚIE:
+${appContext}
 
 ${locationTheme}
 
 ${originalDescription ? `Informații existente despre locație: "${originalDescription}"` : ''}
 
-Creează o descriere de bază care să fie:
-- 2-3 propoziții, concise dar informative
-- Tematică și relevantă pentru numele locației "${locationName}"
-- Include informații despre caracteristicile distinctive, istorie sau context cultural (dacă e relevant)
-- Descrie ce face această locație specială și de ce merită vizitată
-- Scrisă în română, stil informativ dar accesibil
-- Fii specific și oferă detalii concrete despre locație
+ELEMENTE UNICE IDENTIFICATE DIN NUME:
+${uniqueElements}
 
-Răspunde DOAR cu descrierea de bază, fără titluri sau explicații suplimentare.`;
+CRITICAL REQUIREMENTS - DESCRIEREA TREBUIE SĂ FIE:
+- ABSOLUT UNICĂ - nicio altă locație nu poate avea aceeași descriere exactă
+- SPECIFICĂ pentru "${locationName}" - reflectă caracteristicile unice ale acestui nume
+- 2-3 propoziții, concise dar informative
+- Tematică și relevantă pentru numele EXACT "${locationName}"
+- Include informații despre caracteristicile DISTINCTIVE care fac această locație diferită de altele
+- Descrie ce face această locație SPECIALĂ și de ce merită vizitată
+- Scrisă în română, stil informativ dar accesibil
+- Fii SPECIFIC și oferă detalii concrete despre locație care reflectă numele ei
+- Folosește elementele unice identificate din nume pentru a crea o descriere personalizată
+- Evită formulări generice care s-ar putea aplica oricărei locații
+
+IMPORTANT: Această descriere trebuie să fie complet diferită de orice altă descriere pentru alte locații. Fiecare locație are caracteristici unice care trebuie evidențiate.
+
+Răspunde DOAR cu descrierea de bază UNICĂ, fără titluri sau explicații suplimentare.`;
 
     const response = await fetch(
       `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
@@ -59,7 +80,7 @@ Răspunde DOAR cu descrierea de bază, fără titluri sau explicații suplimenta
             },
           ],
           generationConfig: {
-            temperature: 0.7,
+            temperature: 0.9, // Higher temperature for more unique descriptions
             topK: 40,
             topP: 0.95,
             maxOutputTokens: 512,
@@ -102,60 +123,103 @@ function analyzeLocationTheme(locationName: string): string {
   // Castle/Fortress themes
   if (name.includes('castel') || name.includes('cetate') || name.includes('fort')) {
     return `Această locație este un castel sau fortificație istorică. Concentrează-te pe:
-- Istoria și perioada de construcție
-- Arhitectura și stilul arhitectonic
-- Legende și povești asociate
-- Importanța strategică sau culturală
-- Ce poți vedea și explora acolo`;
+- Istoria și perioada de construcție SPECIFICĂ acestui castel
+- Arhitectura și stilul arhitectonic UNIC
+- Legende și povești asociate SPECIFICE acestei locații
+- Importanța strategică sau culturală PARTICULARĂ
+- Ce poți vedea și explora acolo care este UNIC pentru această locație`;
   }
   
   // Monastery/Church themes
   if (name.includes('mănăstire') || name.includes('biseric') || name.includes('schit')) {
     return `Această locație este un lăcaș de cult sau mănăstire. Concentrează-te pe:
-- Istoria religioasă și fondarea
-- Arhitectura și iconografia
-- Importanța spirituală și culturală
-- Artefacte și opere de artă
-- Peisajul și locația geografică`;
+- Istoria religioasă și fondarea SPECIFICĂ acestui lăcaș
+- Arhitectura și iconografia UNICĂ
+- Importanța spirituală și culturală PARTICULARĂ
+- Artefacte și opere de artă SPECIFICE acestei locații
+- Peisajul și locația geografică DISTINCTIVĂ`;
   }
   
   // Natural/Mountain themes
   if (name.includes('munte') || name.includes('deal') || name.includes('pădure') || name.includes('lac') || name.includes('cascad')) {
     return `Această locație este o destinație naturală. Concentrează-te pe:
-- Caracteristicile geografice și geologice
-- Flora și fauna locală
-- Trasee și activități disponibile
-- Peisajul și vederile spectaculoase
-- Sezonul ideal pentru vizitare`;
+- Caracteristicile geografice și geologice UNICE ale acestei locații
+- Flora și fauna locală SPECIFICĂ
+- Trasee și activități disponibile PARTICULAR acestei destinații
+- Peisajul și vederile spectaculoase DISTINCTIVE
+- Sezonul ideal pentru vizitare și ce face această locație NATURALĂ specială`;
   }
   
   // City/Town themes
   if (name.includes('oraș') || name.includes('cetate') || name.includes('burg')) {
     return `Această locație este un oraș sau localitate istorică. Concentrează-te pe:
-- Istoria și evoluția orașului
-- Arhitectura și monumentele
-- Cultura și tradițiile locale
-- Atracțiile principale
-- Atmosfera și vibe-ul locației`;
+- Istoria și evoluția SPECIFICĂ a acestui oraș
+- Arhitectura și monumentele UNICE
+- Cultura și tradițiile locale PARTICULAR acestei localități
+- Atracțiile principale DISTINCTIVE
+- Atmosfera și vibe-ul UNIC al locației`;
   }
   
   // Museum/Exhibition themes
   if (name.includes('muzeu') || name.includes('expoziție') || name.includes('galerie')) {
     return `Această locație este un muzeu sau spațiu expozițional. Concentrează-te pe:
-- Colecțiile și exponatele
-- Tema și scopul muzeului
-- Importanța culturală și istorică
-- Ce poți învăța și descoperi
-- Experiența de vizitare`;
+- Colecțiile și exponatele SPECIFICE acestui muzeu
+- Tema și scopul PARTICULAR al muzeului
+- Importanța culturală și istorică UNICĂ
+- Ce poți învăța și descoperi DISTINCTIV aici
+- Experiența de vizitare SPECIFICĂ`;
   }
   
   // Default theme
   return `Această locație este o destinație turistică din România. Concentrează-te pe:
-- Caracteristicile unice și distinctive
-- Istoria și contextul cultural
-- Ce face locația specială
-- Experiențe pe care le poți avea
-- De ce merită vizitată`;
+- Caracteristicile ABSOLUT UNICE și distinctive care o diferențiază de orice altă locație
+- Istoria și contextul cultural SPECIFIC acestei locații
+- Ce face această locație SPECIALĂ și de neînlocuit
+- Experiențe pe care le poți avea DOAR aici
+- De ce merită vizitată și ce o face DIFERITĂ de altele`;
+}
+
+/**
+ * Extract unique elements from location name to ensure description uniqueness
+ */
+function extractUniqueElements(locationName: string): string {
+  const name = locationName.toLowerCase().trim();
+  const words = name.split(/\s+/);
+  const uniqueWords: string[] = [];
+  
+  // Extract key words that make this location unique
+  words.forEach(word => {
+    // Skip common words
+    const commonWords = ['de', 'la', 'din', 'pe', 'cu', 'și', 'sau', 'pentru', 'către'];
+    if (!commonWords.includes(word) && word.length > 2) {
+      uniqueWords.push(word);
+    }
+  });
+  
+  // Identify location type
+  let locationType = 'destinație turistică';
+  if (name.includes('castel')) locationType = 'castel';
+  else if (name.includes('mănăstire')) locationType = 'mănăstire';
+  else if (name.includes('biseric')) locationType = 'biserică';
+  else if (name.includes('muzeu')) locationType = 'muzeu';
+  else if (name.includes('palat')) locationType = 'palat';
+  else if (name.includes('cetate')) locationType = 'cetate';
+  else if (name.includes('lac')) locationType = 'lac';
+  else if (name.includes('cascad')) locationType = 'cascadă';
+  else if (name.includes('munte')) locationType = 'munte';
+  
+  // Extract geographic/name-specific elements
+  const geographicElements = words.filter(w => 
+    w.length > 3 && 
+    !['castel', 'mănăstire', 'biseric', 'muzeu', 'palat', 'cetate'].includes(w)
+  );
+  
+  return `Tip locație: ${locationType}
+Cuvinte cheie unice: ${uniqueWords.join(', ')}
+Elemente geografice/nume: ${geographicElements.join(', ') || 'N/A'}
+Nume complet: "${locationName}"
+
+Folosește aceste elemente pentru a crea o descriere care reflectă SPECIFIC numele "${locationName}" și nu ar putea fi aplicată altor locații.`;
 }
 
 /**
@@ -302,21 +366,48 @@ export async function generateDetailedDescription(
   }
 
   try {
+    // Get app context for better descriptions
+    const appContext = await getFormattedAppContext();
+    const locationContext = await getLocationRecommendationContext();
+    
+    // Add variation to prompt for different responses each time
+    const variationPrompts = [
+      'Creează o descriere COMPLETĂ și detaliată',
+      'Elaborează o descriere COMPLETĂ și cuprinzătoare',
+      'Dezvoltă o descriere COMPLETĂ și informativă',
+      'Construiește o descriere COMPLETĂ și atractivă',
+    ];
+    const randomVariation = variationPrompts[Math.floor(Math.random() * variationPrompts.length)];
+    
+    const focusAreas = [
+      'atracții specifice, experiențe unice și informații practice',
+      'context istoric, recomandări pentru vizitatori și atmosfera locației',
+      'caracteristici distinctive, sezon ideal și ce face locația memorabilă',
+      'puncte de interes, activități disponibile și detalii despre experiența de vizită',
+    ];
+    const randomFocus = focusAreas[Math.floor(Math.random() * focusAreas.length)];
+    
     const prompt = `Ai deja următoarea descriere de bază pentru locația turistică "${locationName}":
 
 "${baseDescription}"
 
-ACȚIUNE: Creează o descriere COMPLETĂ care include descrierea de bază și o extinde cu informații mai detaliate și profunde.
+CONTEXT APLICAȚIE:
+${appContext}
+
+${locationContext}
+
+ACȚIUNE: ${randomVariation} care include descrierea de bază și o extinde cu informații mai detaliate și profunde.
 
 Creează o descriere completă (bază + extindere) care să includă:
 - Descrierea de bază existentă (la început)
-- Apoi adaugă 4-6 propoziții noi cu:
-  * Detalii suplimentare despre atracții specifice și ce poți vedea/face acolo
-  * Informații despre experiențe unice pe care le poți avea
-  * Context istoric sau cultural mai profund
-  * Informații practice: ce sezon e ideal, durata recomandată pentru vizită
-  * Recomandări specifice pentru vizitatori
-  * Detalii despre atmosfera și ce face locația să fie memorabilă
+- Apoi adaugă 4-6 propoziții noi cu accent pe: ${randomFocus}
+- Detalii suplimentare despre atracții specifice și ce poți vedea/face acolo
+- Informații despre experiențe unice pe care le poți avea
+- Context istoric sau cultural mai profund
+- Informații practice: ce sezon e ideal, durata recomandată pentru vizită
+- Recomandări specifice pentru vizitatori
+- Detalii despre atmosfera și ce face locația să fie memorabilă
+- Poți compara cu alte locații similare din aplicație dacă e relevant
 
 IMPORTANT:
 - Începe cu descrierea de bază exactă (copiază-o)
@@ -325,6 +416,8 @@ IMPORTANT:
 - Fii specific și oferă detalii concrete
 - Scrie în română, stil informativ dar accesibil
 - Menține același ton și stil
+- Poți face referință la funcționalitățile aplicației (harta, lista, salvare, etc.)
+- Folosește formulări variate și creative pentru a oferi o experiență nouă la fiecare generare
 
 Răspunde cu descrierea COMPLETĂ (bază + extindere), fără titluri sau explicații suplimentare.`;
 
@@ -346,7 +439,7 @@ Răspunde cu descrierea COMPLETĂ (bază + extindere), fără titluri sau explic
             },
           ],
           generationConfig: {
-            temperature: 0.7,
+            temperature: 0.85, // Higher temperature for more variation
             topK: 40,
             topP: 0.95,
             maxOutputTokens: 1024, // Allow longer responses
