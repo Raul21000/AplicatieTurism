@@ -1,7 +1,7 @@
+import { generateDetailedDescription } from '@/lib/ai-service';
 import { getSession } from '@/lib/auth-helpers';
 import { isLocationSaved, removeSavedLocation, saveLocation } from '@/lib/database';
 import { getStaticDescriptionForLocation } from '@/lib/location-static-descriptions';
-import { generateDetailedDescription } from '@/lib/ai-service';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -31,6 +31,12 @@ export default function DetailsScreen() {
   // Parse location data from params
   const location = params.location ? JSON.parse(params.location as string) : null;
   const staticDescription = location ? getStaticDescriptionForLocation(location.name) : null;
+  const baseDescription = staticDescription ?? location?.description ?? '';
+  const hasBaseDescription = baseDescription.trim().length > 0;
+  const aiBaseDescription =
+    baseDescription.trim().length > 0
+      ? baseDescription
+      : `Experiența la ${location?.name ?? 'această locație'} merită descoperită. Creează o descriere creativă care să redea vibe-ul locului chiar dacă nu avem detalii inițiale.`;
 
   useEffect(() => {
     checkIfSaved();
@@ -80,12 +86,12 @@ export default function DetailsScreen() {
   };
 
   const handleGenerateExtraDescription = async () => {
-    if (!location || !staticDescription) return;
+    if (!location) return;
 
     try {
       setIsGeneratingExtra(true);
 
-      const detailed = await generateDetailedDescription(location.name, staticDescription);
+      const detailed = await generateDetailedDescription(location.name, aiBaseDescription);
       setExtraDescription(detailed);
       setHasGeneratedExtra(true); // hide button after generation
     } catch (error: any) {
@@ -163,30 +169,33 @@ export default function DetailsScreen() {
           <Text style={styles.title}>{location.name}</Text>
           <Text style={styles.rating}>⭐ {location.rating.toFixed(1)}</Text>
 
-          {/* Static description for this location, if configured */}
-          {staticDescription && (
-            <View style={styles.descriptionContainer}>
-              <Text style={styles.description}>{staticDescription}</Text>
+          <View style={styles.descriptionContainer}>
+            {hasBaseDescription ? (
+              <Text style={styles.description}>{baseDescription}</Text>
+            ) : (
+              <Text style={styles.descriptionPlaceholder}>
+                Nu avem încă o descriere pentru această locație, dar poți genera una cu AI.
+              </Text>
+            )}
 
-              {/* Button to generate extra, more in-depth description with AI */}
-              {!hasGeneratedExtra && !extraDescription && (
-                <TouchableOpacity
-                  style={[styles.extraButton, isGeneratingExtra && styles.buttonDisabled]}
-                  onPress={handleGenerateExtraDescription}
-                  disabled={isGeneratingExtra}
-                >
-                  {isGeneratingExtra ? (
-                    <View style={styles.loadingContainer}>
-                      <ActivityIndicator color="#fff" size="small" />
-                      <Text style={styles.extraButtonText}>Se generează descrierea...</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.extraButtonText}>Extinde descrierea cu AI</Text>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
+            {/* Button to generate extra, more in-depth description with AI */}
+            {!hasGeneratedExtra && !extraDescription && (
+              <TouchableOpacity
+                style={[styles.extraButton, isGeneratingExtra && styles.buttonDisabled]}
+                onPress={handleGenerateExtraDescription}
+                disabled={isGeneratingExtra}
+              >
+                {isGeneratingExtra ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.extraButtonText}>Se generează descrierea...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.extraButtonText}>Extinde descrierea cu AI</Text>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
 
           {/* Extra AI-generated description (shown only after button is used) */}
           {extraDescription && (
@@ -267,6 +276,13 @@ const styles = StyleSheet.create({
     color: '#b0b0b0',
     lineHeight: 26,
     marginBottom: 16,
+  },
+  descriptionPlaceholder: {
+    fontSize: 16,
+    color: '#777',
+    lineHeight: 26,
+    marginBottom: 16,
+    fontStyle: 'italic',
   },
   extraButton: {
     backgroundColor: '#007AFF',

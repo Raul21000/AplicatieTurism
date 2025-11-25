@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Easing,
   FlatList,
   SafeAreaView,
   StyleSheet,
@@ -40,9 +41,45 @@ export default function ExploreScreen() {
   const slideAnim = useRef(new Animated.Value(300)).current;
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [transitionTarget, setTransitionTarget] = useState<ViewMode>('list');
+  const transitionTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetchLocations();
+  }, []);
+
+  useEffect(() => {
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.08,
+          duration: 1200,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0.92,
+          duration: 1200,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    pulse.start();
+    return () => {
+      pulse.stop();
+    };
+  }, [pulseAnim]);
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimeout.current) {
+        clearTimeout(transitionTimeout.current);
+      }
+    };
   }, []);
 
   const fetchLocations = async () => {
@@ -74,11 +111,24 @@ export default function ExploreScreen() {
   };
 
   const toggleViewMode = () => {
+    if (isTransitioning) return;
+
     // Close side panel if open when switching modes
     if (selectedLocation) {
       handleClosePanel();
     }
-    setViewMode(prev => prev === 'list' ? 'map' : 'list');
+
+    const nextMode = viewMode === 'list' ? 'map' : 'list';
+    setTransitionTarget(nextMode);
+    setIsTransitioning(true);
+    setViewMode(nextMode);
+
+    if (transitionTimeout.current) {
+      clearTimeout(transitionTimeout.current);
+    }
+    transitionTimeout.current = setTimeout(() => {
+      setIsTransitioning(false);
+    }, 700);
   };
 
   // Filter, search and sort locations
@@ -252,19 +302,60 @@ export default function ExploreScreen() {
     );
   };
 
+  const loadingHighlights = [
+    'Sincronizăm ratingurile și recenziile',
+    'Pregătim experiența pe hartă',
+    'Optimizăm lista pentru filtre',
+  ];
+  const transitionMessages: Record<ViewMode, { title: string; subtitle: string }> = {
+    list: {
+      title: 'Comutăm în modul listă',
+      subtitle: 'Aranjăm cărțile pentru o parcurgere fluidă.',
+    },
+    map: {
+      title: 'Comutăm în modul hartă',
+      subtitle: 'Repoziționăm marcajele și camera interactivă.',
+    },
+  };
+
   if (loading) {
     return (
-      <View style={styles.container}>
+      <View style={styles.loadingShell}>
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Explore</Text>
             <TouchableOpacity style={styles.toggleButton} onPress={toggleViewMode} disabled>
-              <Text style={styles.toggleButtonText}>Loading...</Text>
+              <Text style={styles.toggleButtonText}>Se pregătește...</Text>
             </TouchableOpacity>
           </View>
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingText}>Loading locations...</Text>
+          <View style={styles.loadingContent}>
+            <Animated.View
+              style={[
+                styles.loadingHalo,
+                {
+                  transform: [{ scale: pulseAnim }],
+                },
+              ]}
+            />
+            <View style={styles.loadingCard}>
+              <View style={styles.loadingBadge}>
+                <Text style={styles.loadingBadgeText}>UX Sync</Text>
+              </View>
+              <ActivityIndicator size="large" color="#FFFFFF" />
+              <Text style={styles.loadingTitle}>Pregătim harta inteligentă</Text>
+              <Text style={styles.loadingSubtitle}>
+                Agregăm locații din surse multiple și le ordonăm pentru ambele moduri de vizualizare.
+              </Text>
+              <View style={styles.loadingSteps}>
+                {loadingHighlights.map((highlight) => (
+                  <View key={highlight} style={styles.loadingStep}>
+                    <View style={styles.loadingStepBullet} />
+                    <Text style={styles.loadingStepText}>{highlight}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={styles.loadingFootnote}>Experiența nu îngheață — doar rafinăm rezultatele.</Text>
+            </View>
           </View>
         </SafeAreaView>
       </View>
@@ -277,7 +368,10 @@ export default function ExploreScreen() {
         <SafeAreaView style={styles.safeArea}>
           <View style={styles.header}>
             <Text style={styles.headerTitle}>Explore</Text>
-            <TouchableOpacity style={styles.toggleButton} onPress={toggleViewMode}>
+            <TouchableOpacity
+              style={[styles.toggleButton, isTransitioning && styles.toggleButtonDisabled]}
+              onPress={toggleViewMode}
+              disabled={isTransitioning}>
               <Text style={styles.toggleButtonText}>
                 {viewMode === 'list' ? 'Hartă' : 'Listă'}
               </Text>
@@ -294,6 +388,15 @@ export default function ExploreScreen() {
             </TouchableOpacity>
           </View>
         </SafeAreaView>
+        {isTransitioning && (
+          <View style={styles.transitionOverlay}>
+            <View style={styles.transitionCard}>
+              <ActivityIndicator size="large" color="#FFFFFF" />
+              <Text style={styles.transitionTitle}>{transitionMessages[transitionTarget].title}</Text>
+              <Text style={styles.transitionSubtitle}>{transitionMessages[transitionTarget].subtitle}</Text>
+            </View>
+          </View>
+        )}
       </View>
     );
   }
@@ -303,7 +406,10 @@ export default function ExploreScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Explore</Text>
-          <TouchableOpacity style={styles.toggleButton} onPress={toggleViewMode}>
+          <TouchableOpacity
+            style={[styles.toggleButton, isTransitioning && styles.toggleButtonDisabled]}
+            onPress={toggleViewMode}
+            disabled={isTransitioning}>
             <Text style={styles.toggleButtonText}>
               {viewMode === 'list' ? 'Hartă' : 'Listă'}
             </Text>
@@ -387,6 +493,15 @@ export default function ExploreScreen() {
           renderMapView()
         )}
       </SafeAreaView>
+      {isTransitioning && (
+        <View style={styles.transitionOverlay}>
+          <View style={styles.transitionCard}>
+            <ActivityIndicator size="large" color="#FFFFFF" />
+            <Text style={styles.transitionTitle}>{transitionMessages[transitionTarget].title}</Text>
+            <Text style={styles.transitionSubtitle}>{transitionMessages[transitionTarget].subtitle}</Text>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -395,6 +510,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0a0a0a',
+    position: 'relative',
+  },
+  loadingShell: {
+    flex: 1,
+    backgroundColor: '#050505',
   },
   safeArea: {
     flex: 1,
@@ -414,6 +534,95 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
     letterSpacing: -0.5,
+  },
+  loadingContent: {
+    flex: 1,
+    padding: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingHalo: {
+    position: 'absolute',
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: '#007AFF22',
+    shadowColor: '#007AFF',
+    shadowOpacity: 0.45,
+    shadowRadius: 30,
+  },
+  loadingCard: {
+    width: '100%',
+    maxWidth: 420,
+    borderRadius: 28,
+    paddingVertical: 36,
+    paddingHorizontal: 28,
+    backgroundColor: '#111113',
+    borderWidth: 1,
+    borderColor: '#1f1f25',
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  loadingBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#1c1c28',
+    borderWidth: 1,
+    borderColor: '#2f2f3d',
+    marginBottom: 20,
+  },
+  loadingBadgeText: {
+    color: '#9aa0ff',
+    fontWeight: '600',
+    fontSize: 12,
+    letterSpacing: 0.5,
+  },
+  loadingTitle: {
+    marginTop: 24,
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: -0.2,
+  },
+  loadingSubtitle: {
+    marginTop: 8,
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#b0b0c0',
+  },
+  loadingSteps: {
+    marginTop: 24,
+    gap: 12,
+  },
+  loadingStep: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  loadingStepBullet: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#34C759',
+    shadowColor: '#34C759',
+    shadowOpacity: 0.7,
+    shadowRadius: 6,
+  },
+  loadingStepText: {
+    flex: 1,
+    color: '#d7d7e3',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  loadingFootnote: {
+    marginTop: 30,
+    color: '#777789',
+    fontSize: 13,
+    textAlign: 'center',
   },
   searchContainer: {
     paddingHorizontal: 20,
@@ -511,6 +720,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
+  },
+  toggleButtonDisabled: {
+    opacity: 0.5,
   },
   toggleButtonText: {
     color: '#fff',
@@ -685,5 +897,44 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 16,
+  },
+  transitionOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(3, 3, 8, 0.86)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  transitionCard: {
+    width: '100%',
+    maxWidth: 320,
+    borderRadius: 20,
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    backgroundColor: '#111113',
+    borderWidth: 1,
+    borderColor: '#1f1f25',
+    shadowColor: '#000',
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
+    elevation: 10,
+    alignItems: 'center',
+    gap: 18,
+  },
+  transitionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  transitionSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#b0b0c0',
+    textAlign: 'center',
   },
 });
