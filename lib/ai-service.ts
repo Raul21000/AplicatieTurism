@@ -1,10 +1,9 @@
 // AI Service pentru generarea descrierilor cu vibe
 // Folosește Google Gemini API (gratuit pentru studenți)
-// IMPORTANT: cheia NU mai are fallback hardcodat; trebuie setată doar prin .env
 
-import { getFormattedAppContext } from './app-context';
+import { getFormattedAppContext, getLocationRecommendationContext } from './app-context';
 
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || ''; // Setează EXPO_PUBLIC_GEMINI_API_KEY în .env
+const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || 'AIzaSyDabDp_Y5nHNImaZNII1f_NhVQrD_iAkcE'; // Setează EXPO_PUBLIC_GEMINI_API_KEY în .env
 // Use gemini-2.5-flash (fastest) or gemini-2.5-pro (better quality)
 const GEMINI_MODEL = 'gemini-2.5-flash'; // Fast and efficient
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -361,205 +360,13 @@ function buildFallbackDetailedDescription(locationName: string, baseDescription:
   const baseHint =
     trimmedBase.length > 140 ? `${trimmedBase.slice(0, 140).trim()}...` : trimmedBase;
 
-  const nameLower = locationName.toLowerCase();
-
-  // Determine a coarse "type" of place from its name
-  let type: 'pub' | 'coffee' | 'italian' | 'vegan' | 'fastfood' | 'bistro' | 'generic' = 'generic';
-  if (nameLower.includes('pub') || nameLower.includes('bar') || nameLower.includes('shamrock')) {
-    type = 'pub';
-  } else if (
-    nameLower.includes('coffee') ||
-    nameLower.includes('cafe') ||
-    nameLower.includes('caf\u00e9') ||
-    nameLower.includes('tea') ||
-    nameLower.includes('ceai')
-  ) {
-    type = 'coffee';
-  } else if (
-    nameLower.includes('pizzeria') ||
-    nameLower.includes('trattoria') ||
-    nameLower.includes('pizza') ||
-    nameLower.includes('ristorante')
-  ) {
-    type = 'italian';
-  } else if (nameLower.includes('vegan') || nameLower.includes('green')) {
-    type = 'vegan';
-  } else if (nameLower.includes('d\u00f6ner') || nameLower.includes('doner') || nameLower.includes('fast-food')) {
-    type = 'fastfood';
-  } else if (nameLower.includes('bistro')) {
-    type = 'bistro';
-  }
-
-  // Simple deterministic hash from name to pick a variant
-  const hash =
-    locationName
-      .split('')
-      .reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % 3;
-
-  switch (type) {
-    case 'coffee':
-      if (hash === 0) {
-        return (
-          `În minte rămâne mai ales felul în care miroase aerul când deschizi ușa la „${locationName}”: ` +
-          `amestec de cafea proaspăt râșnită și dulciuri scoase din cuptor, exact cum sugerează descrierea inițială („${baseHint}”). ` +
-          `Zumzetul de conversații și clinchetul ceștilor creează un fundal sonor cald, ` +
-          `iar lumina filtrată prin geamuri transformă mesele din colț în locuri perfecte pentru lucru, povești sau introspecție.`
-        );
-      } else if (hash === 1) {
-        return (
-          `Primele minute petrecute în „${locationName}” trec aproape neobservate, ` +
-          `pentru că atenția îți este furată de rafturile cu căni, de espressorul care toarce constant și de mirosul dens de cafea tare. ` +
-          `Descrierea de bază („${baseHint}”) prinde viață în detaliile mici: barista care știe deja comanda clienților fideli, ` +
-          `laptopurile aliniate pe mese și senzația că aici ai putea petrece ore întregi fără să observi cum trece timpul.`
-        );
-      } else {
-        return (
-          `„${locationName}” funcționează ca un mic nod social al cartierului, ` +
-          `unde aroma boabelor prăjite și sunetul espressoarelor se împletesc cu discuțiile în șoaptă de la mesele din colț. ` +
-          `Continuând ideea din descrierea inițială („${baseHint}”), locul pare gândit atât pentru studiu, cât și pentru întâlniri improvizate, ` +
-          `iar fiecare colțișor are propria lui poveste, de la mesele lângă priză la fotoliile rezervate cititorilor împătimiți.`
-        );
-      }
-
-    case 'pub':
-      if (hash === 0) {
-        return (
-          `Pe măsură ce se lasă seara, „${locationName}” se umple de râsete, muzică dată un pic prea tare și pahare care ciocnesc ritmic, ` +
-          `continuând atmosfera sugerată de descrierea de bază („${baseHint}”). ` +
-          `E genul de loc în care e greu să stai singur la bar prea mult timp, pentru că în câteva minute intri deja în vorbă cu cineva, ` +
-          `iar povestitul se întinde până târziu în noapte.`
-        );
-      } else if (hash === 1) {
-        return (
-          `Lumina caldă, lemnul închis la culoare și muzica de fundal transformă „${locationName}” într-un decor perfect pentru seri lungi cu gașca. ` +
-          `Descrierea ta inițială („${baseHint}”) prinde aici un plus de culoare prin micile ritualuri ale casei: ` +
-          `quiz nights, meciuri urmărite la ecrane mari și momentele în care tot localul cântă aceeași piesă.`
-        );
-      } else {
-        return (
-          `Dacă treci pe lângă „${locationName}” într-o vineri seară, auzi din stradă mixul de voci, muzică și veselie ` +
-          `care confirmă tot ce spune descrierea de bază („${baseHint}”). ` +
-          `Aici nu vii neapărat pentru liniște sau pentru mâncare sofisticată, ci pentru energia unui pub adevărat, ` +
-          `unde mesele se lungesc, glumele circulă repede și nopțile se termină mai târziu decât ai planificat.`
-        );
-      }
-
-    case 'italian':
-      if (hash === 0) {
-        return (
-          `În spatele numelui „${locationName}” se ascunde genul acela de local unde mirosul de aluat copt și sos de roșii te lovește imediat ce intri. ` +
-          `Descrierea inițială („${baseHint}”) e completată de imaginea cuptoarelor încins, a pizzei scoase direct pe lemn și a discuțiilor animate dintre mese, ` +
-          `care dau impresia unei seri petrecute într-o trattorie mică din Italia.`
-        );
-      } else if (hash === 1) {
-        return (
-          `„${locationName}” se joacă cu toate clișeele bune ale unei seri italiene: ` +
-          `pahare de vin care se ciocnesc discret, farfurii colorate pline cu paste și pizza și un zumzet constant de conversații. ` +
-          `Dincolo de descrierea de bază („${baseHint}”), locul câștigă prin ritmul lui relaxat, ` +
-          `unde mesele nu se grăbesc, iar desertul pare mereu o idee bună.`
-        );
-      } else {
-        return (
-          `Dacă închizi ochii câteva secunde în „${locationName}”, ` +
-          `ai putea jura că ești într-o străduță aglomerată din Roma sau Napoli: ` +
-          `tacâmuri care se lovesc de farfurii, miros de busuioc și ulei de măsline, fragmente de conversații în mai multe limbi. ` +
-          `Toate aceste detalii dau profunzime imaginilor conturate deja în descrierea de bază („${baseHint}”).`
-        );
-      }
-
-    case 'vegan':
-      if (hash === 0) {
-        return (
-          `„${locationName}” arată exact cum îți imaginezi un loc dedicat celor care caută mâncare pe bază de plante: ` +
-          `multă lumină naturală, culori deschise și farfurii care arată ca niște mici tablouri. ` +
-          `Descrierea inițială („${baseHint}”) se continuă cu smoothie bowl-uri intense la culoare, sucuri fresh și detalii de lemn și plante verzi care dau spațiului un aer proaspăt.`
-        );
-      } else if (hash === 1) {
-        return (
-          `În „${locationName}” se aud mai degrabă râsete și conversații relaxate decât zgomotul tacâmurilor grele, ` +
-          `pentru că totul aici gravitează în jurul ideii de lejeritate și energie bună. ` +
-          `Pornind de la descrierea de bază („${baseHint}”), poți să-ți imaginezi mesele pline de boluri colorate, ` +
-          `meniuri scrise cu markere pe tăblițe negre și oameni care stau la povești după antrenament sau după birou.`
-        );
-      } else {
-        return (
-          `Atmosfera din „${locationName}” e genul acela care te face să uiți că tot ce e în farfurie e vegan: ` +
-          `miros de ierburi aromatice, plating atent și combinații de texturi care contrazic prejudecata că „mâncarea sănătoasă e plictisitoare”. ` +
-          `Descrierea inițială („${baseHint}”) se transformă astfel într-o experiență completă, ` +
-          `unde fiecare preparat pare gândit să arate bine pe Instagram, dar și să te țină sătul până seara.`
-        );
-      }
-
-    case 'fastfood':
-      if (hash === 0) {
-        return (
-          `La orele de vârf, „${locationName}” funcționează ca un mic mecanism bine uns: ` +
-          `comenzi strigate rapid, miros de carne la rotisor și cartofi prăjiți, tăvi care se mișcă într-un flux continuu. ` +
-          `Descrierea ta de bază („${baseHint}”) e completată de imaginea studenților sau trecătorilor grăbiți ` +
-          `care își iau porția consistentă înainte să fugă mai departe prin oraș.`
-        );
-      } else if (hash === 1) {
-        return (
-          `„${locationName}” nu se preface a fi altceva decât este: ` +
-          `un loc unde porțiile sunt mari, gusturile intense și mâncarea ajunge repede în fața ta. ` +
-          `Continuând vibe-ul din descrierea inițială („${baseHint}”), ` +
-          `zgomotul de coji de cartofi care se prăjesc și de sosuri turnate generos peste carne creează un soundtrack specific de fast-food apreciat de localnici.`
-        );
-      } else {
-        return (
-          `Când foamea e mare și timpul puțin, „${locationName}” sare în evidență cu mirosul inconfundabil de kebab proaspăt și lipie caldă. ` +
-          `Descrierea de bază („${baseHint}”) prinde și mai mult sens când vezi șirul de oameni de la tejghea seara târziu, ` +
-          `fiecare cu propria variantă preferată de sosuri și toppinguri.`
-        );
-      }
-
-    case 'bistro':
-      if (hash === 0) {
-        return (
-          `„${locationName}” are ritmul lui propriu: ` +
-          `dimineața cu mic dejunuri lente și cafele lungi, seara cu pahare de vin și farfurii atent aranjate. ` +
-          `Descrierea inițială („${baseHint}”) e completată de atmosfera intimă și de lumina caldă ` +
-          `care transformă bistroul într-un loc unde conversațiile curg natural și timpul pare să încetinească.`
-        );
-      } else if (hash === 1) {
-        return (
-          `Meniul de la „${locationName}” pare gândit pentru cei care se plictisesc repede de aceleași feluri de mâncare: ` +
-          `câteva preparate bine alese, schimbate sezonier, și o atenție specială la plating. ` +
-          `Pe lângă ce ai descris deja („${baseHint}”), bistroul câștigă prin senzația că te afli într-un loc „mic, dar serios” despre ceea ce pune în farfurie.`
-        );
-      } else {
-        return (
-          `În „${locationName}”, zgomotul de fundal e un mix plăcut de tacâmuri, muzică discretă și fragmente de conversații, ` +
-          `tipic pentru un bistro care a găsit echilibrul între casual și rafinat. ` +
-          `Descrierea de bază („${baseHint}”) e doar punctul de plecare pentru o experiență în care ` +
-          `poți veni la prânz pentru un meniu rapid sau seara pentru o cină ceva mai specială.`
-        );
-      }
-
-    case 'generic':
-    default:
-      if (hash === 0) {
-        return (
-          `„${locationName}” nu încearcă să fie altceva decât ceea ce descrierea de bază sugerează („${baseHint}”), ` +
-          `dar tocmai sinceritatea asta îl face memorabil. ` +
-          `Decorul, luminile și felul în care se așază oamenii la mese dau locului un caracter propriu, ` +
-          `ușor de recunoscut după doar câteva vizite.`
-        );
-      } else if (hash === 1) {
-        return (
-          `Ceea ce începe ca o simplă oprire la „${locationName}” se transformă adesea într-o pauză mai lungă decât ai planificat, ` +
-          `pentru că spațiul te prinde cu atmosfera lui și cu micile detalii observate doar de aproape. ` +
-          `Descrierea inițială („${baseHint}”) e doar schița; restul vine din lumină, zgomot și felul în care locul este trăit de cei care îl vizitează.`
-        );
-      } else {
-        return (
-          `Fiecare oraș are câteva locuri care devin repere fără să-și propună asta, iar „${locationName}” ` +
-          `pare să fie unul dintre ele. ` +
-          `Pornind de la ceea ce ai menționat deja în descriere („${baseHint}”), ` +
-          `spațiul se completează cu senzațiile greu de pus în cuvinte: aerul, luminile, vocile și mirosul specific care te întâmpină de la primii pași.`
-        );
-      }
-  }
+  return (
+    `Pornind de la atmosfera descrisă mai sus pentru „${locationName}”, ` +
+    `locul atrage prin detaliile sale atent gândite și prin modul în care îmbină confortul cu personalitatea proprie. ` +
+    `Fiecare vizită scoate în evidență alte nuanțe – de la modul în care este amenajat spațiul, ` +
+    `până la modul în care meniul completează vibe-ul general sugerat de descrierea inițială („${baseHint}”). ` +
+    `Pentru cei care caută mai mult decât o simplă oprire rapidă, ${locationName} devine rapid un punct de reper memorabil în oraș.`
+  );
 }
 
 /**
@@ -580,55 +387,55 @@ export async function generateDetailedDescription(
   try {
     // Get app context for better descriptions
     const appContext = await getFormattedAppContext();
+    const locationContext = await getLocationRecommendationContext();
     
-    // Different creative angles to force variety between locations
-    const angles = [
-      'descrie atmosfera serii de vineri văzută prin ochii unui student obosit după cursuri',
-      'povestește locul ca și cum ai recomanda unui cuplu la prima întâlnire în oraș',
-      'privește totul din perspectiva unui turist străin pasionat de gastronomie locală',
-      'concentrează-te pe detaliile vizuale și sonore care te lovesc când intri prima dată',
-      'scrie ca un foodie pretențios care compară locul cu cele mai bune adrese din oraș',
-      'descrie-l ca pe refugiul secret al unui localnic care vine aici de ani de zile',
-      'abordează-l ca pe un loc „de după muncă”, unde oamenii scapă de stresul zilei',
-      'gândește-l ca pe un hotspot studențesc, plin de discuții, laptopuri și căni de cafea',
-    ];
-    const randomAngle = angles[Math.floor(Math.random() * angles.length)];
+    const prompt = `Ești un editor de travel și gastronomie cu o vastă experiență, care scrie pentru un ghid turistic premium.
 
-    const prompt = `Ești un scriitor creativ de travel, cunoscut pentru stilul neconvențional.
+Ai deja următoarea descriere de bază (short_description) pentru locația "${locationName}":
 
+"${baseDescription}"
 
-
-DATE INTRARE:
-
-- Nume locație: "${locationName}"
-
-- Descriere tehnică (bază): "${baseDescription}"
-
-- Oraș/Zonă: Dedu din contextul locației.
-
-
-
-SARCINA TA UNICĂ:
-Scrie o continuare de 3-4 fraze care completează descrierea de bază, DAR privită prin următoarea lentilă specifică:
-
-👉 UNGHI DE ABORDARE: ${randomAngle}
-
-
-
-REGULI CRITICE (Anti-Repetiție):
-1. NU repeta informația din descrierea de bază. Dacă scrie deja că e pizza, tu descrie gustul, nu faptul că au pizza.
-2. INTERZIS să începi frazele cu subiectul standard ("Locația", "Restaurantul", "Această cafenea", "Aici"). Începe direct cu acțiunea, detaliul vizual sau senzația.
-3. EVITĂ cuvintele de umplutură tipice ghidurilor slabe: "situat", "amplasat", "oază de liniște", "personal amabil", "te îmbie". Fii specific, nu generic.
-4. Daca unghiul de abordare cere poezie, fii poetic. Daca cere pragmatism, fii direct. Respectă strict tonul impus mai sus.
-
-
-
-CONTEXT (Dacă e relevant pentru atmosferă):
+CONTEXT APLICAȚIE:
 ${appContext}
 
+CONTEXT LOCAȚII RECOMANDATE:
+${locationContext}
 
+SCOP:
+Continuă și extinde această descriere cu un paragraf suplimentar de 3-4 fraze, mai profund și mai specific, FĂRĂ să repeți formulările din descrierea de bază.
 
-RĂSPUNDE DOAR CU TEXTUL GENERAT (fără ghilimele, fără introduceri).`;
+REGULI STRICTE PENTRU A ASIGURA UNICITATEA:
+1) ADAPTARE TONALĂ:
+   - Determină tipul locației din nume și descrierea de bază (cafenea studențească, cafenea literară, restaurant rafinat, pub, fast-food, bistro vegan etc.).
+   - Dacă este cafenea studențească sau lângă campus: ton vibrant, accesibil, energic.
+   - Dacă este restaurant rafinat / trattorie elegantă: ton rafinat, elegant, orientat pe experiență culinară.
+   - Dacă este pub sau bar: ton distractiv, gălăgios, social.
+
+2) FĂRĂ CLIȘEE REPETITIVE:
+   - Nu începe frazele cu "Acest loc", "Acest restaurant", "Restaurantul este", "Locația oferă", "Aici poți".
+   - Variază structura propozițiilor și punctul de plecare (atmosferă, clientelă, sunet, lumină, miros, moment al zilei).
+
+3) DETALII SENZORIALE:
+   - Pornește de la nume și descrierea de bază pentru a imagina mirosuri, lumini și sunete specifice.
+   - Dacă apare ceva de tip "cuptor cu lemne" sau referințe la pizza/paste: menționează mirosul de lemn ars, aluat copt sau sos de roșii.
+   - Dacă este ceainărie sau cafenea: vorbește despre aroma boabelor de cafea, aburul ceaiului, sunetul ceștilor.
+   - Dacă este lângă mare: descrie briza, sunetul valurilor sau reflexia luminii pe apă.
+
+4) LOCALIZARE ȘI VIBE:
+   - Dacă din nume sau descriere reiese că e "lângă campus" sau zonă studențească: accent pe energie tânără, agitație, conversații animate.
+   - Dacă este în centru, aproape de piață sau de o zonă istorică: accent pe atmosferă urbană, plină de viață, sau pe farmec istoric.
+   - Integrează subtil orașul în descriere (de ex.: "în ritmul alert al Bucureștiului", "în liniștea Sibiului vechi").
+
+5) LUNGIME:
+   - Scrie DOAR 3-4 fraze noi (fără descrierea de bază), suficient de detaliate dar nu exagerat de lungi.
+
+CERINȚE FINALE:
+- Scrie DOAR CONTINUAREA, nu copia descrierea de bază.
+- Folosește româna, stil natural, ca într-un ghid turistic premium.
+- Fii foarte specific și evită repetițiile evidente față de descrierea de bază.
+- Nu adăuga titluri, bullet points sau explicații despre ce faci.
+
+RĂSPUNDE DOAR CU ACESTE 3-4 FRAZE NOI (fără descrierea de bază).`;
 
     const response = await fetch(
       `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
